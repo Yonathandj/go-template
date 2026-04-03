@@ -1,0 +1,18 @@
+server:
+  port:
+  timeout:
+
+databases:
+  postgre:
+    analytics:
+      host:
+      port:
+      username:
+      password:
+      name:
+    audit:
+      host:
+      port:
+      username:
+      password:
+      name:
