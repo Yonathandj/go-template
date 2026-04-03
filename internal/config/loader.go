@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -46,6 +47,7 @@ func Load() (*Config, error) {
 
 	err = godotenv.Load(ENV_LOCATION)
 	if err != nil {
+		return nil, fmt.Errorf("unable to load the .env file: %w", err)
 	}
 
 	viper.SetConfigName(CONFIG_NAME)
@@ -54,6 +56,7 @@ func Load() (*Config, error) {
 
 	err = viper.ReadInConfig()
 	if err != nil {
+		return nil, fmt.Errorf("unable to load the configuration file: %w", err)
 	}
 
 	viper.AutomaticEnv()
@@ -61,6 +64,7 @@ func Load() (*Config, error) {
 
 	err = viper.Unmarshal(&config)
 	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal the config into the struct: %w", err)
 	}
 
 	return config, nil
