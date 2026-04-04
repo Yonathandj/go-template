@@ -1,3 +1,8 @@
+application:
+  name:
+  version:
+  environment:
+
 server:
   port:
   timeout:
@@ -16,3 +21,8 @@ databases:
       username:
       password:
       name:
+
+logger:
+  format:  # json or console 
+  level:   # debug, info, warn, or error
+  output:  # stdout or a file path
