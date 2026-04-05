@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	env "github.com/joho/godotenv"
+	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
 
@@ -38,10 +38,19 @@ type Config struct {
 	Logger    LoggerConfig
 }
 
+const (
+	configName = "config"
+	configType = "yaml"
+	configPath = "../../configs/"
+
+	envFilePath = "../../.env"
+	envAttr     = "application.environment"
+)
+
 func loadFile() error {
-	viper.SetConfigName("")
-	viper.SetConfigType("")
-	viper.AddConfigPath("")
+	viper.SetConfigName(configName)
+	viper.SetConfigType(configType)
+	viper.AddConfigPath(configPath)
 
 	err := viper.ReadInConfig()
 	if err != nil {
@@ -56,12 +65,7 @@ func loadConsul() error {
 }
 
 func Load() (*Config, error) {
-	var (
-		config      Config
-		environment string
-	)
-
-	err := env.Load("")
+	err := godotenv.Load(envFilePath)
 	if err != nil {
 		fmt.Print("unable to load the .env file, relying on system environment variables")
 	}
@@ -69,16 +73,23 @@ func Load() (*Config, error) {
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
-	environment = viper.GetString("application.environment")
+	environment := viper.GetString(envAttr)
 	switch environment {
 	case "development":
-		loadFile()
+		err = loadFile()
+		if err != nil {
+			return nil, err
+		}
 	case "sit", "uat", "production":
-		loadConsul()
+		err = loadConsul()
+		if err != nil {
+			return nil, err
+		}
 	default:
-		loadFile()
+		return nil, fmt.Errorf("unknown environment: %s", environment)
 	}
 
+	var config Config
 	err = viper.Unmarshal(&config)
 	if err != nil {
 		return nil, fmt.Errorf("unable to unmarshal the config into the struct: %w", err)
