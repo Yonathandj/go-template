@@ -42,9 +42,6 @@ const (
 	configName = "config"
 	configType = "yaml"
 	configPath = "../../configs/"
-
-	envFile = "../../.env"
-	envKey  = "application.environment"
 )
 
 func loadFile() error {
@@ -66,13 +63,13 @@ func loadConsul() error {
 
 func Load() (*Config, error) {
 	var (
-		config      Config
-		environment string
-
 		err error
+
+		environment string
+		config      Config
 	)
 
-	err = env.Load(envFile)
+	err = env.Load("../../.env")
 	if err != nil {
 		fmt.Print("unable to load the .env file, relying on system environment variables")
 	}
@@ -80,7 +77,7 @@ func Load() (*Config, error) {
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
-	environment = viper.GetString(envKey)
+	environment = viper.GetString("application.environment")
 	switch environment {
 	case "development":
 		err = loadFile()

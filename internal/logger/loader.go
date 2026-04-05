@@ -8,6 +8,12 @@ type Logger interface {
 	With(args ...any) Logger
 }
 
-func Load() (Logger, error) {
-	return nil, nil
+type Options struct {
+	Format string
+	Level  string
+	Output string
+}
+
+func Load(options Options) (Logger, error) {
+	return newZapLogger(options)
 }
