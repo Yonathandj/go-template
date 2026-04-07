@@ -25,4 +25,4 @@ databases:
 logger:
   format:  # json or console 
   level:   # debug, info, warn, or error
-  output:  # stdout or a file path
+  output:  # stdout, stderr or a file path

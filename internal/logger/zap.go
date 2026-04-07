@@ -29,7 +29,7 @@ func buildLevel(level string) (core.Level, error) {
 	case "error":
 		return core.ErrorLevel, nil
 	default:
-		return 0, fmt.Errorf("unknown level %s: must be debug|info|warn|error", level)
+		return -9, fmt.Errorf("unknown level %s: must be debug, info, warn, or error", level)
 	}
 }
 
@@ -37,7 +37,7 @@ func buildSyncer(output string) (core.WriteSyncer, error) {
 	switch output {
 	case "stdout":
 		return core.AddSync(os.Stdout), nil
-	case "stderr":
+	case "", "stderr":
 		return core.AddSync(os.Stderr), nil
 	default:
 		file, err := os.OpenFile(output, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
@@ -50,6 +50,7 @@ func buildSyncer(output string) (core.WriteSyncer, error) {
 
 func buildEncoder(format string) (core.Encoder, error) {
 	var encoder = zap.NewProductionEncoderConfig()
+	encoder.EncodeTime = core.ISO8601TimeEncoder
 	switch format {
 	case "json":
 		encoder.EncodeLevel = core.LowercaseLevelEncoder
@@ -58,7 +59,7 @@ func buildEncoder(format string) (core.Encoder, error) {
 		encoder.EncodeLevel = core.LowercaseLevelEncoder
 		return core.NewConsoleEncoder(encoder), nil
 	default:
-		return nil, fmt.Errorf("unknown format %s: must be json|console", format)
+		return nil, fmt.Errorf("unknown format %s: must be json or console", format)
 	}
 }
 

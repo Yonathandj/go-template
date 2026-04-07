@@ -9,6 +9,12 @@ import (
 	"github.com/spf13/viper"
 )
 
+type ApplicationConfig struct {
+	Name        string
+	Version     string
+	Environment string
+}
+
 type ServerConfig struct {
 	Port    int
 	Timeout time.Duration
@@ -33,9 +39,10 @@ type LoggerConfig struct {
 }
 
 type Config struct {
-	Server    ServerConfig
-	Databases DatabasesConfig
-	Logger    LoggerConfig
+	Application ApplicationConfig
+	Server      ServerConfig
+	Databases   DatabasesConfig
+	Logger      LoggerConfig
 }
 
 const (
