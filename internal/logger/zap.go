@@ -29,7 +29,7 @@ func buildLevel(level string) (core.Level, error) {
 	case "error":
 		return core.ErrorLevel, nil
 	default:
-		return -9, fmt.Errorf("unknown level %s: must be debug, info, warn, or error", level)
+		return -99, fmt.Errorf("unknown level %s: must be debug, info, warn, or error", level)
 	}
 }
 
@@ -50,7 +50,7 @@ func buildSyncer(output string) (core.WriteSyncer, error) {
 
 func buildEncoder(format string) (core.Encoder, error) {
 	var encoder = zap.NewProductionEncoderConfig()
-	encoder.EncodeTime = core.ISO8601TimeEncoder
+	encoder.EncodeTime = core.EpochTimeEncoder
 	switch format {
 	case "json":
 		encoder.EncodeLevel = core.LowercaseLevelEncoder

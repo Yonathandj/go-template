@@ -78,7 +78,7 @@ func Load() (*Config, error) {
 
 	err = env.Load("../../.env")
 	if err != nil {
-		fmt.Print("unable to load the .env file, relying on system environment variables")
+		fmt.Println("unable to load the .env file, relying on system environment variables")
 	}
 
 	viper.AutomaticEnv()
@@ -97,7 +97,7 @@ func Load() (*Config, error) {
 			return nil, err
 		}
 	default:
-		return nil, fmt.Errorf("unknown environment: %s", environment)
+		return nil, fmt.Errorf("unknown environment %s: must be development, sit, uat, or production", environment)
 	}
 
 	err = viper.Unmarshal(&config)
