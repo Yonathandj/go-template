@@ -29,7 +29,7 @@ func buildLevel(level string) (core.Level, error) {
 	case "error":
 		return core.ErrorLevel, nil
 	default:
-		return -99, fmt.Errorf("unknown level %s: must be debug, info, warn, or error", level)
+		return 0, fmt.Errorf("unknown level %s: must be debug, info, warn, or error", level)
 	}
 }
 
@@ -37,10 +37,10 @@ func buildSyncer(output string) (core.WriteSyncer, error) {
 	switch output {
 	case "stdout":
 		return core.AddSync(os.Stdout), nil
-	case "", "stderr":
+	case "stderr", "":
 		return core.AddSync(os.Stderr), nil
 	default:
-		file, err := os.OpenFile(output, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		file, err := os.OpenFile(output, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			return nil, fmt.Errorf("open log file %q: %w", output, err)
 		}
