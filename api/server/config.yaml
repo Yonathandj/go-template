@@ -1,0 +1,4 @@
+package: gen
+generate:
+  gin-server: true
+  models: true
