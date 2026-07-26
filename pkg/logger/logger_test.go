@@ -186,7 +186,6 @@ func TestNewRotationOptions(t *testing.T) {
 func TestNewMkdirError(t *testing.T) {
 	base := t.TempDir()
 
-	// A regular file where the log dir should go makes MkdirAll fail.
 	blocker := filepath.Join(base, "go")
 	if err := os.WriteFile(blocker, []byte("not a dir"), 0o600); err != nil {
 		t.Fatalf("write blocker: %v", err)
@@ -200,7 +199,6 @@ func TestNewMkdirError(t *testing.T) {
 func TestNewInvalidRotationPattern(t *testing.T) {
 	base := t.TempDir()
 
-	// "%q" is quoted, so rotatelogs rejects the filename pattern.
 	if _, err := New(Config{ServiceName: "bad%q", Path: base}); err == nil {
 		t.Error("New = nil error, want rotatelogs pattern failure")
 	}

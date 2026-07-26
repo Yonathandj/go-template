@@ -9,6 +9,8 @@ import (
 	"gorm.io/gorm"
 )
 
+var gormOpen = gorm.Open
+
 func pgQuote(v string) string {
 	v = strings.ReplaceAll(v, `\`, `\\`)
 	v = strings.ReplaceAll(v, `'`, `\'`)
@@ -21,7 +23,7 @@ func NewPostgres(host string, port int, user string, password string, database s
 		log.Printf("warning: PostgreSQL connection to %s:%d is not encrypted; credentials and query data cross the network in cleartext (opts=%q)\n", host, port, opts)
 	}
 
-	db, err := gorm.Open(postgres.Open(
+	db, err := gormOpen(postgres.Open(
 		fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s %s",
 			pgQuote(host), port, pgQuote(user), pgQuote(password), pgQuote(database), opts),
 	), &gorm.Config{Logger: gormLogger})

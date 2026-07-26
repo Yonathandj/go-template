@@ -67,14 +67,20 @@ func New(cfg Config) (*Logger, error) {
 	if cfg.Console {
 		cores = append(cores, zapcore.NewCore(encoder, zapcore.AddSync(os.Stdout), parseLevel(cfg.Level)))
 	}
-	tee := zapcore.NewTee(cores...)
+	core := zapcore.NewTee(cores...)
 
-	zapOpts := []zap.Option{}
+	var zapOpts []zap.Option
 	if cfg.ReportCaller {
 		zapOpts = append(zapOpts, zap.AddCaller(), zap.AddCallerSkip(1))
 	}
+
 	return &Logger{
-		zap: zap.New(tee, zapOpts...).With(zap.String("application_name", cfg.ServiceName), zap.String("env", cfg.Env)), closer: rotator}, nil
+		zap: zap.New(core, zapOpts...).With(
+			zap.String("application_name", cfg.ServiceName),
+			zap.String("env", cfg.Env),
+		),
+		closer: rotator,
+	}, nil
 }
 
 func encoderConfig() zapcore.EncoderConfig {

@@ -105,7 +105,10 @@ func decode(resp *http.Response, out any) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		msg, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if err != nil {
+			return fmt.Errorf("httpclient: %s: reading error body: %w", resp.Status, err)
+		}
 		return fmt.Errorf("httpclient: %s: %s", resp.Status, msg)
 	}
 	if out == nil {

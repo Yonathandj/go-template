@@ -279,6 +279,33 @@ func TestDecodeHTTPErrorBodyIsCapped(t *testing.T) {
 	}
 }
 
+// A body that fails mid-read must still surface the status and the read failure.
+type failingBody struct{}
+
+func (failingBody) Read([]byte) (int, error) { return 0, errors.New("connection reset") }
+func (failingBody) Close() error             { return nil }
+
+type failingBodyTransport struct{}
+
+func (failingBodyTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusInternalServerError,
+		Status:     "500 Internal Server Error",
+		Body:       failingBody{},
+	}, nil
+}
+
+func TestDecodeHTTPErrorBodyReadFails(t *testing.T) {
+	var out payload
+	err := New(WithTransport(failingBodyTransport{})).GetJSON(context.Background(), "http://go/random", &out)
+	if err == nil {
+		t.Fatal("GetJSON = nil error, want error-body read failure")
+	}
+	if !strings.Contains(err.Error(), "500") || !strings.Contains(err.Error(), "connection reset") {
+		t.Errorf("error = %q, want it to carry the status and the read failure", err)
+	}
+}
+
 func TestDecodeMalformedJSON(t *testing.T) {
 	serv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{not json`)
