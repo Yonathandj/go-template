@@ -35,10 +35,12 @@ tidy: ## Sync go.mod/go.sum
 
 check: fmt vet lint test ## Format, vet, lint, test
 
-build: ## Build every app for the host OS
+EXE := $(shell go env GOEXE)
+
+build: ## Build every app for the host OS (.exe on Windows)
 	@for app in $(APPS); do \
-		echo "building $$app"; \
-		go build -o $(BIN_DIR)/$$app ./cmd/$$app; \
+		echo "building $$app$(EXE)"; \
+		go build -o $(BIN_DIR)/$$app$(EXE) ./cmd/$$app; \
 	done
 
 build-all: ## Cross-compile every app for linux, windows, darwin (amd64 + arm64)
