@@ -12,6 +12,8 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+var hostname = os.Hostname
+
 // RotationOptions controls log file rotation and retention.
 type RotationOptions struct {
 	Daily      bool // rotate every 24h (dated filename); else rotate by MaxSizeMB
@@ -49,7 +51,8 @@ func New(cfg Config) (*Logger, error) {
 
 	rotateOpts := []rotatelogs.Option{rotatelogs.WithLinkName("")}
 	if cfg.Rotation.MaxAgeDays > 0 {
-		rotateOpts = append(rotateOpts, rotatelogs.WithMaxAge(time.Duration(cfg.Rotation.MaxAgeDays)*24*time.Hour))
+		rotateOpts = append(
+			rotateOpts, rotatelogs.WithMaxAge(time.Duration(cfg.Rotation.MaxAgeDays)*24*time.Hour))
 	}
 	if cfg.Rotation.Daily {
 		rotateOpts = append(rotateOpts, rotatelogs.WithRotationTime(24*time.Hour))
@@ -63,7 +66,8 @@ func New(cfg Config) (*Logger, error) {
 	}
 	encoder := zapcore.NewJSONEncoder(encoderConfig())
 
-	cores := []zapcore.Core{zapcore.NewCore(encoder, zapcore.AddSync(rotator), parseLevel(cfg.Level))}
+	cores := []zapcore.Core{
+		zapcore.NewCore(encoder, zapcore.AddSync(rotator), parseLevel(cfg.Level))}
 	if cfg.Console {
 		cores = append(cores, zapcore.NewCore(encoder, zapcore.AddSync(os.Stdout), parseLevel(cfg.Level)))
 	}
@@ -74,10 +78,16 @@ func New(cfg Config) (*Logger, error) {
 		zapOpts = append(zapOpts, zap.AddCaller(), zap.AddCallerSkip(1))
 	}
 
+	host, err := hostname()
+	if err != nil {
+		host = ""
+	}
+
 	return &Logger{
 		zap: zap.New(core, zapOpts...).With(
 			zap.String("application_name", cfg.ServiceName),
 			zap.String("env", cfg.Env),
+			zap.String("host", host),
 		),
 		closer: rotator,
 	}, nil

@@ -2,6 +2,7 @@ package logger
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,11 +18,11 @@ func readLogFile(t *testing.T, dir string) string {
 	if err != nil || len(matches) == 0 {
 		t.Fatalf("no log file under %s (glob err: %v)", dir, err)
 	}
-	bytes, err := os.ReadFile(matches[0])
+	data, err := os.ReadFile(matches[0])
 	if err != nil {
 		t.Fatalf("read log file: %v", err)
 	}
-	return string(bytes)
+	return string(data)
 }
 
 func TestNewWritesJSONWithServiceFields(t *testing.T) {
@@ -54,6 +55,13 @@ func TestNewWritesJSONWithServiceFields(t *testing.T) {
 	if entry["env"] != "test" {
 		t.Errorf("env = %v, want test", entry["env"])
 	}
+	wantHost, err := os.Hostname()
+	if err != nil {
+		wantHost = ""
+	}
+	if entry["host"] != wantHost {
+		t.Errorf("host = %v, want %v", entry["host"], wantHost)
+	}
 	if entry["count"] != float64(4) {
 		t.Errorf("count = %v, want 4", entry["count"])
 	}
@@ -62,6 +70,25 @@ func TestNewWritesJSONWithServiceFields(t *testing.T) {
 	}
 	if _, ok := entry["caller"]; ok {
 		t.Error("caller present although ReportCaller is false")
+	}
+}
+
+func TestHostFallsBackToEmptyString(t *testing.T) {
+	base := t.TempDir()
+
+	orig := hostname
+	hostname = func() (string, error) { return "ignored", errors.New("no hostname") }
+	t.Cleanup(func() { hostname = orig })
+
+	log, err := New(Config{ServiceName: "go", Path: base})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	log.Info("hello", nil)
+	_ = log.Close()
+
+	if !strings.Contains(readLogFile(t, filepath.Join(base, "go")), `"host":""`) {
+		t.Error("a hostname lookup failure must log an empty host, not fail New")
 	}
 }
 

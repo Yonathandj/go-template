@@ -79,7 +79,6 @@ func TestOptions(t *testing.T) {
 	}
 }
 
-// WithTimeout must apply to whichever client is installed, so ordering matters.
 func TestWithTimeoutAppliesToReplacedClient(t *testing.T) {
 	custom := &http.Client{}
 	New(WithHTTPClient(custom), WithTimeout(2*time.Second))
@@ -92,13 +91,13 @@ func TestWithTimeoutAppliesToReplacedClient(t *testing.T) {
 func TestDoSendsHeadersAndJoinsPath(t *testing.T) {
 	var gotPath, gotKey, gotMethod string
 
-	serv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath, gotKey, gotMethod = r.URL.Path, r.Header.Get("X-Key"), r.Method
 		w.WriteHeader(http.StatusNoContent)
 	}))
-	defer serv.Close()
+	defer srv.Close()
 
-	client := New(WithBaseURL(serv.URL+"/api"), WithHeader("X-Key", "random"))
+	client := New(WithBaseURL(srv.URL+"/api"), WithHeader("X-Key", "random"))
 	resp, err := client.Do(context.Background(), http.MethodDelete, "/users/2", nil)
 	if err != nil {
 		t.Fatalf("Do: %v", err)
@@ -118,13 +117,13 @@ func TestDoSendsHeadersAndJoinsPath(t *testing.T) {
 
 func TestDoSendsBody(t *testing.T) {
 	var got string
-	serv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		bytes, _ := io.ReadAll(r.Body)
 		got = string(bytes)
 	}))
-	defer serv.Close()
+	defer srv.Close()
 
-	resp, err := New(WithBaseURL(serv.URL)).Do(context.Background(), http.MethodPost, "/", strings.NewReader("raw body"))
+	resp, err := New(WithBaseURL(srv.URL)).Do(context.Background(), http.MethodPost, "/", strings.NewReader("raw body"))
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}
@@ -143,24 +142,24 @@ func TestDoInvalidMethod(t *testing.T) {
 }
 
 func TestDoTransportError(t *testing.T) {
-	serv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
-	serv.Close() // nobody's listening right now
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	srv.Close()
 
-	_, err := New(WithBaseURL(serv.URL)).Do(context.Background(), http.MethodGet, "/", nil)
+	_, err := New(WithBaseURL(srv.URL)).Do(context.Background(), http.MethodGet, "/", nil)
 	if err == nil {
 		t.Error("Do = nil error, want transport error")
 	}
 }
 
 func TestGetJSON(t *testing.T) {
-	serv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"name":"go","age":30}`)
 	}))
-	defer serv.Close()
+	defer srv.Close()
 
 	var out payload
-	if err := New(WithBaseURL(serv.URL)).GetJSON(context.Background(), "/users/2", &out); err != nil {
+	if err := New(WithBaseURL(srv.URL)).GetJSON(context.Background(), "/users/2", &out); err != nil {
 		t.Fatalf("GetJSON: %v", err)
 	}
 	if out.Name != "go" || out.Age != 30 {
@@ -169,26 +168,26 @@ func TestGetJSON(t *testing.T) {
 }
 
 func TestGetJSONRequestError(t *testing.T) {
-	serv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
-	serv.Close()
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	srv.Close()
 
 	var out payload
-	if err := New(WithBaseURL(serv.URL)).GetJSON(context.Background(), "/", &out); err == nil {
+	if err := New(WithBaseURL(srv.URL)).GetJSON(context.Background(), "/", &out); err == nil {
 		t.Error("GetJSON = nil error, want transport error")
 	}
 }
 
 func TestPostJSON(t *testing.T) {
 	var gotBody, gotContentType string
-	serv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		gotBody, gotContentType = string(b), r.Header.Get("Content-Type")
 		_, _ = io.WriteString(w, `{"name":"go","age":32}`)
 	}))
-	defer serv.Close()
+	defer srv.Close()
 
 	var out payload
-	err := New(WithBaseURL(serv.URL), WithHeader("X-Key", "random")).
+	err := New(WithBaseURL(srv.URL), WithHeader("X-Key", "random")).
 		PostJSON(context.Background(), "/users", payload{Name: "go", Age: 30}, &out)
 	if err != nil {
 		t.Fatalf("PostJSON: %v", err)
@@ -207,13 +206,13 @@ func TestPostJSON(t *testing.T) {
 
 func TestPostJSONNilOutDiscardsBody(t *testing.T) {
 	hasCalled := false
-	serv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hasCalled = true
 		_, _ = io.WriteString(w, `{"ignored":true}`)
 	}))
-	defer serv.Close()
+	defer srv.Close()
 
-	if err := New(WithBaseURL(serv.URL)).PostJSON(context.Background(), "/users", payload{Name: "go"}, nil); err != nil {
+	if err := New(WithBaseURL(srv.URL)).PostJSON(context.Background(), "/users", payload{Name: "go"}, nil); err != nil {
 		t.Fatalf("PostJSON: %v", err)
 	}
 	if !hasCalled {
@@ -229,7 +228,6 @@ func TestPostJSONMarshalError(t *testing.T) {
 }
 
 func TestPostJSONInvalidURL(t *testing.T) {
-	// joinURL ended up producing a URL that can't be parsed.
 	err := New(WithBaseURL("://bad")).PostJSON(context.Background(), "/users", payload{}, nil)
 	if err == nil {
 		t.Error("PostJSON = nil error, want request-construction error")
@@ -237,22 +235,22 @@ func TestPostJSONInvalidURL(t *testing.T) {
 }
 
 func TestPostJSONTransportError(t *testing.T) {
-	serv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
-	serv.Close()
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	srv.Close()
 
-	if err := New(WithBaseURL(serv.URL)).PostJSON(context.Background(), "/", payload{}, nil); err == nil {
+	if err := New(WithBaseURL(srv.URL)).PostJSON(context.Background(), "/", payload{}, nil); err == nil {
 		t.Error("PostJSON = nil error, want transport error")
 	}
 }
 
 func TestDecodeHTTPError(t *testing.T) {
-	serv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "record not found", http.StatusNotFound)
 	}))
-	defer serv.Close()
+	defer srv.Close()
 
 	var out payload
-	err := New(WithBaseURL(serv.URL)).GetJSON(context.Background(), "/users/2", &out)
+	err := New(WithBaseURL(srv.URL)).GetJSON(context.Background(), "/users/2", &out)
 	if err == nil {
 		t.Fatal("GetJSON = nil error, want 404")
 	}
@@ -261,16 +259,15 @@ func TestDecodeHTTPError(t *testing.T) {
 	}
 }
 
-// The error body is truncated so a huge error page cannot blow up memory.
 func TestDecodeHTTPErrorBodyIsCapped(t *testing.T) {
-	serv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = io.WriteString(w, strings.Repeat("x", 10_000))
 	}))
-	defer serv.Close()
+	defer srv.Close()
 
 	var out payload
-	err := New(WithBaseURL(serv.URL)).GetJSON(context.Background(), "/", &out)
+	err := New(WithBaseURL(srv.URL)).GetJSON(context.Background(), "/", &out)
 	if err == nil {
 		t.Fatal("GetJSON = nil error, want 500")
 	}
@@ -279,7 +276,6 @@ func TestDecodeHTTPErrorBodyIsCapped(t *testing.T) {
 	}
 }
 
-// A body that fails mid-read must still surface the status and the read failure.
 type failingBody struct{}
 
 func (failingBody) Read([]byte) (int, error) { return 0, errors.New("connection reset") }
@@ -307,27 +303,27 @@ func TestDecodeHTTPErrorBodyReadFails(t *testing.T) {
 }
 
 func TestDecodeMalformedJSON(t *testing.T) {
-	serv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{not json`)
 	}))
-	defer serv.Close()
+	defer srv.Close()
 
 	var out payload
-	if err := New(WithBaseURL(serv.URL)).GetJSON(context.Background(), "/", &out); err == nil {
+	if err := New(WithBaseURL(srv.URL)).GetJSON(context.Background(), "/", &out); err == nil {
 		t.Error("GetJSON = nil error, want JSON decode error")
 	}
 }
 
 func TestContextCancellation(t *testing.T) {
-	serv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
 	}))
-	defer serv.Close()
+	defer srv.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := New(WithBaseURL(serv.URL)).Do(ctx, http.MethodGet, "/", nil)
+	_, err := New(WithBaseURL(srv.URL)).Do(ctx, http.MethodGet, "/", nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("Do = %v, want context.Canceled", err)
 	}
