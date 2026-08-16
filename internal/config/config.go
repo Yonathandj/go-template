@@ -29,11 +29,15 @@ type App struct {
 	Env     string `mapstructure:"env"     validate:"required,oneof=development staging production"`
 }
 
-// Server holds HTTP server mode, port, and request timeout.
+// Server holds HTTP server mode, port, request timeout, and middleware settings.
 type Server struct {
 	Mode    string        `mapstructure:"mode"    validate:"required,oneof=test debug release"`
 	Port    int           `mapstructure:"port"    validate:"required"`
 	Timeout time.Duration `mapstructure:"timeout" validate:"required"`
+	// CORSOrigins lists the browser origins allowed to call this API. Empty disables CORS.
+	CORSOrigins []string `mapstructure:"cors_origins"`
+	// MaxBodyBytes caps the request body size; 0 uses the middleware default.
+	MaxBodyBytes int64 `mapstructure:"max_body_bytes" validate:"gte=0"`
 }
 
 // Databases holds every configured datastore, keyed by logical name, plus the pool settings shared by all of them.
