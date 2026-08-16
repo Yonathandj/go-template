@@ -23,7 +23,7 @@ const (
 	maxRequestIDLen = 64
 
 	// defaultMaxBodyBytes caps request bodies when server.max_body_bytes is unset.
-	defaultMaxBodyBytes = 1 << 20 // 1 MiB
+	defaultMaxBodyBytes = 1 << 20
 )
 
 type requestIDCtxKey struct{}
@@ -49,21 +49,21 @@ func Default(cfg *config.Config, log *logger.Logger) []gin.HandlerFunc {
 // RequestID reuses a sane inbound X-Request-ID or generates one, and echoes it on the response.
 func RequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id := c.GetHeader(requestIDHeader)
-		if !validRequestID(id) {
-			id, _ = util.GenerateUniqueID(requestIDLength)
+		reqID := c.GetHeader(requestIDHeader)
+		if !validRequestID(reqID) {
+			reqID, _ = util.GenerateUniqueID(requestIDLength)
 		}
 
-		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), requestIDCtxKey{}, id))
-		c.Header(requestIDHeader, id)
+		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), requestIDCtxKey{}, reqID))
+		c.Header(requestIDHeader, reqID)
 		c.Next()
 	}
 }
 
 // RequestIDFrom returns the request ID, or "" outside a request. Pass c.Request.Context(), not the *gin.Context.
 func RequestIDFrom(ctx context.Context) string {
-	id, _ := ctx.Value(requestIDCtxKey{}).(string)
-	return id
+	reqID, _ := ctx.Value(requestIDCtxKey{}).(string)
+	return reqID
 }
 
 // AccessLog logs one line per request: 5xx as error, 4xx as warn, rest as info.
@@ -84,7 +84,6 @@ func AccessLog(log *logger.Logger) gin.HandlerFunc {
 		if errs := c.Errors.String(); errs != "" {
 			fields["error"] = errs
 		}
-
 		switch {
 		case status >= http.StatusInternalServerError:
 			log.Error("request", fields)
@@ -111,6 +110,10 @@ func Recovery(log *logger.Logger) gin.HandlerFunc {
 					"panic":      fmt.Sprint(err),
 					"stack":      string(debug.Stack()),
 				})
+				if c.Writer.Written() {
+					c.Abort()
+					return
+				}
 				c.AbortWithStatusJSON(
 					http.StatusInternalServerError, gin.H{"message": "internal server error"})
 			}
@@ -119,14 +122,12 @@ func Recovery(log *logger.Logger) gin.HandlerFunc {
 	}
 }
 
-// Timeout puts a deadline on the request context; a non-positive duration disables it.
 func Timeout(timeout time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if timeout <= 0 {
 			c.Next()
 			return
 		}
-
 		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 		defer cancel()
 		c.Request = c.Request.WithContext(ctx)
@@ -160,28 +161,25 @@ func CORS(allowed []string) gin.HandlerFunc {
 			c.Next()
 			return
 		}
-
 		// Vary before the allow check, so a shared cache never reuses one origin's response for another.
 		c.Writer.Header().Add("Vary", "Origin")
 		if !originAllowed(allowed, origin) {
 			c.Next()
 			return
 		}
-
 		c.Header("Access-Control-Allow-Origin", origin)
 		c.Header("Access-Control-Expose-Headers", requestIDHeader)
 		if !slices.Contains(allowed, "*") {
 			c.Header("Access-Control-Allow-Credentials", "true")
 		}
-
 		if c.Request.Method == http.MethodOptions {
 			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			// Echo the requested headers: the browser only asks for ones the page sends, and the origin is allowlisted.
-			allowHeaders := c.GetHeader("Access-Control-Request-Headers")
-			if allowHeaders == "" {
-				allowHeaders = "Authorization, Content-Type, " + requestIDHeader
+			headers := c.GetHeader("Access-Control-Request-Headers")
+			if headers == "" {
+				headers = "Authorization, Content-Type, " + requestIDHeader
 			}
-			c.Header("Access-Control-Allow-Headers", allowHeaders)
+			c.Header("Access-Control-Allow-Headers", headers)
 			c.Header("Access-Control-Max-Age", "600")
 			c.AbortWithStatus(http.StatusNoContent)
 			return
@@ -200,31 +198,12 @@ func MaxBodyBytes(limit int64) gin.HandlerFunc {
 	}
 }
 
-// Bind fills v from the JSON body, aborting with 413 past the MaxBodyBytes cap and 400 otherwise.
-func Bind(c *gin.Context, v any) bool {
-	err := c.ShouldBindJSON(v)
-	if err == nil {
-		return true
-	}
-
-	// Record it so AccessLog carries the real reason; the client only gets the status.
-	_ = c.Error(err)
-
-	status, message := http.StatusBadRequest, "invalid request body"
-	if _, tooLarge := errors.AsType[*http.MaxBytesError](err); tooLarge {
-		status, message = http.StatusRequestEntityTooLarge, "request body too large"
-	}
-	c.AbortWithStatusJSON(status, gin.H{"message": message})
-	return false
-}
-
-// validRequestID accepts only short, printable, single-line IDs: the header is attacker-controlled.
-func validRequestID(id string) bool {
-	if id == "" || len(id) > maxRequestIDLen {
+func validRequestID(reqID string) bool {
+	if reqID == "" || len(reqID) > maxRequestIDLen {
 		return false
 	}
-	for _, r := range id {
-		if r < '!' || r > '~' {
+	for _, value := range reqID {
+		if value < '!' || value > '~' {
 			return false
 		}
 	}
@@ -232,8 +211,8 @@ func validRequestID(id string) bool {
 }
 
 func originAllowed(allowed []string, origin string) bool {
-	for _, a := range allowed {
-		if a == "*" || strings.EqualFold(a, origin) {
+	for _, value := range allowed {
+		if value == "*" || strings.EqualFold(value, origin) {
 			return true
 		}
 	}
