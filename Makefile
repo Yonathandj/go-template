@@ -5,7 +5,10 @@ BIN_DIR := bin
 APPS := $(notdir $(wildcard cmd/*))
 APP  ?= $(firstword $(APPS))
 
-.PHONY: help run test cover vet lint fmt check tidy build build-all clean oapicodegen
+IMAGE ?= go-template
+PORT  ?= 8080
+
+.PHONY: help run test cover vet lint fmt check tidy build build-all clean oapicodegen docker-build docker-run
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-12s %s\n", $$1, $$2}'
@@ -59,3 +62,9 @@ clean: ## Remove build artifacts
 
 oapicodegen: ## Generate OpenAPI server code
 	bash scripts/oapicodegen.sh
+
+docker-build: ## Build the image (APP=name, IMAGE=tag)
+	docker build --build-arg APP=$(APP) -t $(IMAGE) .
+
+docker-run: ## Run the image with configs/ mounted read-only (PORT must match server.port)
+	docker run --rm -p $(PORT):$(PORT) -v "$(CURDIR)/configs:/app/configs:ro" $(IMAGE)

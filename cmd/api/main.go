@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	shutdownTimeout = 15 * time.Second
+	shutdownTimeout = 8 * time.Second
 	idleTimeout     = 60 * time.Second
 )
 
