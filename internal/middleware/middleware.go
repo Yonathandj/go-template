@@ -1,5 +1,3 @@
-// Package middleware holds the standard gin chain every API route gets:
-// request ID, access log, panic recovery, security headers, CORS, body cap.
 package middleware
 
 import (
@@ -30,8 +28,7 @@ const (
 
 type requestIDCtxKey struct{}
 
-// Default returns the standard chain in execution order.
-// Mount it with router.Use(middleware.Default(cfg, log)...).
+// Default returns the standard chain in execution order; mount with router.Use(Default(cfg, log)...).
 func Default(cfg *config.Config, log *logger.Logger) []gin.HandlerFunc {
 	maxBody := cfg.Server.MaxBodyBytes
 	if maxBody <= 0 {
@@ -49,13 +46,11 @@ func Default(cfg *config.Config, log *logger.Logger) []gin.HandlerFunc {
 	}
 }
 
-// RequestID reuses a sane inbound X-Request-ID, generates one otherwise, and
-// echoes it on the response. Read it back with RequestIDFrom.
+// RequestID reuses a sane inbound X-Request-ID or generates one, and echoes it on the response.
 func RequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.GetHeader(requestIDHeader)
 		if !validRequestID(id) {
-			// ponytail: only errors if crypto/rand fails; not worth aborting a request over.
 			id, _ = util.GenerateUniqueID(requestIDLength)
 		}
 
@@ -65,9 +60,7 @@ func RequestID() gin.HandlerFunc {
 	}
 }
 
-// RequestIDFrom returns the request ID, or "" outside a request. Pass
-// c.Request.Context(), not the *gin.Context: gin.Context.Value only falls
-// through to the request context when engine.ContextWithFallback is set.
+// RequestIDFrom returns the request ID, or "" outside a request. Pass c.Request.Context(), not the *gin.Context.
 func RequestIDFrom(ctx context.Context) string {
 	id, _ := ctx.Value(requestIDCtxKey{}).(string)
 	return id
@@ -83,7 +76,7 @@ func AccessLog(log *logger.Logger) gin.HandlerFunc {
 		fields := map[string]any{
 			"request_id": RequestIDFrom(c.Request.Context()),
 			"method":     c.Request.Method,
-			"path":       c.Request.URL.Path, // ponytail: no query string, it often carries secrets
+			"path":       c.Request.URL.Path,
 			"status":     status,
 			"latency_ms": time.Since(start).Milliseconds(),
 			"client_ip":  c.ClientIP(),
@@ -108,12 +101,16 @@ func Recovery(log *logger.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			if err := recover(); err != nil {
+				// ErrAbortHandler is the stdlib's deliberate "drop this connection" signal, not a bug.
+				if err == http.ErrAbortHandler {
+					panic(err)
+				}
+
 				log.Error("panic recovered", map[string]any{
 					"request_id": RequestIDFrom(c.Request.Context()),
 					"panic":      fmt.Sprint(err),
 					"stack":      string(debug.Stack()),
 				})
-				// ponytail: no broken-pipe special case; a dead peer just costs one failed write.
 				c.AbortWithStatusJSON(
 					http.StatusInternalServerError, gin.H{"message": "internal server error"})
 			}
@@ -122,9 +119,7 @@ func Recovery(log *logger.Logger) gin.HandlerFunc {
 	}
 }
 
-// Timeout puts a deadline on the request context so a slow query or upstream
-// call is cancelled once the client is no longer waiting. A non-positive
-// duration disables it.
+// Timeout puts a deadline on the request context; a non-positive duration disables it.
 func Timeout(timeout time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if timeout <= 0 {
@@ -138,17 +133,13 @@ func Timeout(timeout time.Duration) gin.HandlerFunc {
 
 		c.Next()
 
-		// ponytail: the deadline only bites for handlers that pass ctx down, which is
-		// where the waiting happens anyway; run the handler in a goroutine (see
-		// gin-contrib/timeout) only if a hard cut for blocking handlers is needed.
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) && !c.Writer.Written() {
 			c.AbortWithStatusJSON(http.StatusGatewayTimeout, gin.H{"message": "request timeout"})
 		}
 	}
 }
 
-// SecurityHeaders sets the baseline response headers. hsts should only be true
-// when the service is served over HTTPS.
+// SecurityHeaders sets the baseline response headers; set hsts only when served over HTTPS.
 func SecurityHeaders(hsts bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("X-Content-Type-Options", "nosniff")
@@ -161,8 +152,7 @@ func SecurityHeaders(hsts bool) gin.HandlerFunc {
 	}
 }
 
-// CORS echoes an allowed Origin and answers preflight. An empty allowlist
-// disables CORS; "*" allows any origin but then never allows credentials.
+// CORS echoes an allowed Origin and answers preflight; empty disables it, "*" allows any origin without credentials.
 func CORS(allowed []string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
@@ -171,8 +161,7 @@ func CORS(allowed []string) gin.HandlerFunc {
 			return
 		}
 
-		// Vary before the allow check: the response body/headers depend on Origin
-		// either way, so a shared cache must not reuse one origin's response for another.
+		// Vary before the allow check, so a shared cache never reuses one origin's response for another.
 		c.Writer.Header().Add("Vary", "Origin")
 		if !originAllowed(allowed, origin) {
 			c.Next()
@@ -180,13 +169,19 @@ func CORS(allowed []string) gin.HandlerFunc {
 		}
 
 		c.Header("Access-Control-Allow-Origin", origin)
+		c.Header("Access-Control-Expose-Headers", requestIDHeader)
 		if !slices.Contains(allowed, "*") {
 			c.Header("Access-Control-Allow-Credentials", "true")
 		}
 
 		if c.Request.Method == http.MethodOptions {
 			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, "+requestIDHeader)
+			// Echo the requested headers: the browser only asks for ones the page sends, and the origin is allowlisted.
+			allowHeaders := c.GetHeader("Access-Control-Request-Headers")
+			if allowHeaders == "" {
+				allowHeaders = "Authorization, Content-Type, " + requestIDHeader
+			}
+			c.Header("Access-Control-Allow-Headers", allowHeaders)
 			c.Header("Access-Control-Max-Age", "600")
 			c.AbortWithStatus(http.StatusNoContent)
 			return
@@ -205,8 +200,25 @@ func MaxBodyBytes(limit int64) gin.HandlerFunc {
 	}
 }
 
-// validRequestID accepts only short, printable, single-line IDs: the header is
-// attacker-controlled and ends up in both the logs and a response header.
+// Bind fills v from the JSON body, aborting with 413 past the MaxBodyBytes cap and 400 otherwise.
+func Bind(c *gin.Context, v any) bool {
+	err := c.ShouldBindJSON(v)
+	if err == nil {
+		return true
+	}
+
+	// Record it so AccessLog carries the real reason; the client only gets the status.
+	_ = c.Error(err)
+
+	status, message := http.StatusBadRequest, "invalid request body"
+	if _, tooLarge := errors.AsType[*http.MaxBytesError](err); tooLarge {
+		status, message = http.StatusRequestEntityTooLarge, "request body too large"
+	}
+	c.AbortWithStatusJSON(status, gin.H{"message": message})
+	return false
+}
+
+// validRequestID accepts only short, printable, single-line IDs: the header is attacker-controlled.
 func validRequestID(id string) bool {
 	if id == "" || len(id) > maxRequestIDLen {
 		return false

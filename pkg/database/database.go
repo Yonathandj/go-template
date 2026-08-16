@@ -20,8 +20,7 @@ var gormLogger = logger.New(
 	},
 )
 
-// PoolConfig holds connection-pool settings.
-// A zero value keeps the driver default for that setting.
+// PoolConfig holds connection-pool settings; a zero value keeps the driver default.
 type PoolConfig struct {
 	MaxOpenConns    int
 	MaxIdleConns    int

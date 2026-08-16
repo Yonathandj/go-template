@@ -34,7 +34,16 @@ func newRouter(t *testing.T, cfg *config.Config) *gin.Engine {
 		}
 		c.String(http.StatusOK, "%s|%s", RequestIDFrom(c.Request.Context()), body)
 	})
+	router.POST("/bind", func(c *gin.Context) {
+		var req struct {
+			Name string `json:"name"`
+		}
+		if Bind(c, &req) {
+			c.String(http.StatusOK, req.Name)
+		}
+	})
 	router.GET("/boom", func(*gin.Context) { panic("boom") })
+	router.GET("/abort", func(*gin.Context) { panic(http.ErrAbortHandler) })
 	router.GET("/slow", func(c *gin.Context) { <-c.Request.Context().Done() }) // waits on ctx, writes nothing
 
 	return router
@@ -81,8 +90,7 @@ func TestDefaultChain(t *testing.T) {
 	})
 
 	t.Run("request id reaches the middleware chain, not just the handler", func(t *testing.T) {
-		// AccessLog and Recovery read it off c.Request.Context(); reading it off the
-		// *gin.Context silently yields "" unless engine.ContextWithFallback is set.
+		// Reading it off the *gin.Context silently yields "" unless engine.ContextWithFallback is set.
 		router := gin.New()
 		router.Use(RequestID())
 		var got string
@@ -99,6 +107,15 @@ func TestDefaultChain(t *testing.T) {
 		if rec.Code != http.StatusInternalServerError {
 			t.Errorf("status = %d, want 500", rec.Code)
 		}
+	})
+
+	t.Run("lets ErrAbortHandler through instead of logging it as a 500", func(t *testing.T) {
+		defer func() {
+			if got := recover(); got != http.ErrAbortHandler {
+				t.Errorf("recovered %v, want ErrAbortHandler to propagate", got)
+			}
+		}()
+		do(router, httptest.NewRequest(http.MethodGet, "/abort", nil))
 	})
 
 	t.Run("cancels an overrunning request with 504", func(t *testing.T) {
@@ -136,10 +153,96 @@ func TestDefaultChain(t *testing.T) {
 		}
 	})
 
+	t.Run("preflight echoes the requested headers and exposes the request id", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodOptions, "/echo", nil)
+		req.Header.Set("Origin", "https://app.example.com")
+		req.Header.Set("Access-Control-Request-Headers", "X-Api-Key")
+		rec := do(router, req)
+
+		if got := rec.Header().Get("Access-Control-Allow-Headers"); got != "X-Api-Key" {
+			t.Errorf("allow-headers = %q, want the requested header", got)
+		}
+		if got := rec.Header().Get("Access-Control-Expose-Headers"); got != requestIDHeader {
+			t.Errorf("expose-headers = %q, want %s", got, requestIDHeader)
+		}
+	})
+
+	t.Run("allows a simple cross-origin request through to the handler", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/echo", strings.NewReader("hi"))
+		req.Header.Set("Origin", "https://app.example.com")
+		rec := do(router, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want 200", rec.Code)
+		}
+		if got := rec.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
+			t.Errorf("allow-credentials = %q, want true for an explicit origin", got)
+		}
+	})
+
+	t.Run("replaces an inbound request id that is not printable", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/echo", strings.NewReader("hi"))
+		req.Header.Set(requestIDHeader, "bad\x01id")
+		rec := do(router, req)
+
+		if got := rec.Header().Get(requestIDHeader); got == "bad\x01id" || got == "" {
+			t.Errorf("request id = %q, want a generated replacement", got)
+		}
+	})
+
+	t.Run("bind maps body errors to 413 and 400", func(t *testing.T) {
+		cases := []struct {
+			name string
+			body string
+			want int
+		}{
+			{"valid", `{"name":"ok"}`, http.StatusOK},
+			{"malformed", `{`, http.StatusBadRequest},
+			{"over the cap", `{"name":"` + strings.Repeat("x", 32) + `"}`, http.StatusRequestEntityTooLarge},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				req := httptest.NewRequest(http.MethodPost, "/bind", strings.NewReader(tc.body))
+				req.Header.Set("Content-Type", "application/json")
+				if rec := do(router, req); rec.Code != tc.want {
+					t.Errorf("status = %d, want %d", rec.Code, tc.want)
+				}
+			})
+		}
+	})
+
 	t.Run("caps the request body", func(t *testing.T) {
 		body := strings.NewReader(strings.Repeat("x", int(cfg.Server.MaxBodyBytes)+1))
 		if rec := do(router, httptest.NewRequest(http.MethodPost, "/echo", body)); rec.Code != http.StatusRequestEntityTooLarge {
 			t.Errorf("status = %d, want 413", rec.Code)
+		}
+	})
+}
+
+// TestDefaultChainUnset covers the other side of every knob: production env, no timeout, no body cap.
+func TestDefaultChainUnset(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.App.Env = "production"
+	router := newRouter(t, cfg)
+
+	t.Run("sets hsts in production", func(t *testing.T) {
+		rec := do(router, httptest.NewRequest(http.MethodPost, "/echo", strings.NewReader("hi")))
+		if got := rec.Header().Get("Strict-Transport-Security"); got == "" {
+			t.Error("HSTS header missing in production")
+		}
+	})
+
+	t.Run("serves a request with the timeout disabled", func(t *testing.T) {
+		rec := do(router, httptest.NewRequest(http.MethodPost, "/echo", strings.NewReader("hi")))
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want 200", rec.Code)
+		}
+	})
+
+	t.Run("falls back to the default body cap", func(t *testing.T) {
+		body := strings.NewReader(strings.Repeat("x", defaultMaxBodyBytes+1))
+		if rec := do(router, httptest.NewRequest(http.MethodPost, "/echo", body)); rec.Code != http.StatusRequestEntityTooLarge {
+			t.Errorf("status = %d, want 413 past the %d byte default", rec.Code, defaultMaxBodyBytes)
 		}
 	})
 }

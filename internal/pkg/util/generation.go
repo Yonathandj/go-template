@@ -9,8 +9,7 @@ import (
 
 const maxIDLength = 22
 
-// GenerateBasicAuth returns an HTTP Basic auth header value ("Basic <base64>"),
-// or "" if either credential is empty.
+// GenerateBasicAuth returns a "Basic <base64>" header value, or "" if either credential is empty.
 func GenerateBasicAuth(user, password string) string {
 	if user == "" || password == "" {
 		return ""

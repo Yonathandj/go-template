@@ -6,14 +6,12 @@ import (
 	"gorm.io/gorm"
 )
 
-// WithTransaction runs fn in a transaction, committing if it returns nil and
-// rolling back otherwise. fn holds a connection and its row locks while it runs.
+// WithTransaction runs fn in a transaction: commit on nil, rollback on error.
 func WithTransaction(ctx context.Context, db *gorm.DB, fn func(tx *gorm.DB) error) error {
 	return db.WithContext(ctx).Transaction(fn)
 }
 
-// WithTransactionResult is WithTransaction for an fn that returns a value,
-// which it passes through on commit and drops (zero value) on rollback.
+// WithTransactionResult is WithTransaction for an fn returning a value; zero value on rollback.
 func WithTransactionResult[T any](ctx context.Context, db *gorm.DB, fn func(tx *gorm.DB) (T, error)) (T, error) {
 	var result T
 

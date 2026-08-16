@@ -48,15 +48,15 @@ func TestWithTransactionResult(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectCommit()
-	got, err := WithTransactionResult(context.Background(), db, func(tx *gorm.DB) (int, error) { return 1, nil })
-	if err != nil || got != 1 {
-		t.Fatalf("WithTransactionResult = (%d, %v), want (1, nil)", got, err)
+	got, err := WithTransactionResult(context.Background(), db, func(tx *gorm.DB) (int, error) { return 2, nil })
+	if err != nil || got != 2 {
+		t.Fatalf("WithTransactionResult = (%d, %v), want (2, nil)", got, err)
 	}
 
 	mock.ExpectBegin()
 	mock.ExpectRollback()
 	wantErr := errors.New("error at WithTransactionResult")
-	got, err = WithTransactionResult(context.Background(), db, func(tx *gorm.DB) (int, error) { return 1, wantErr })
+	got, err = WithTransactionResult(context.Background(), db, func(tx *gorm.DB) (int, error) { return 2, wantErr })
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("error = %v, want %v", err, wantErr)
 	}

@@ -79,8 +79,7 @@ func (c *Client) GetJSON(ctx context.Context, path string, out any) error {
 	return decode(resp, out)
 }
 
-// PostJSON marshals in as JSON, POSTs it, and decodes the response into out.
-// Pass out=nil to ignore the response body.
+// PostJSON marshals in as JSON, POSTs it, and decodes the response into out; out=nil ignores the body.
 func (c *Client) PostJSON(ctx context.Context, path string, in, out any) error {
 	payload, err := json.Marshal(in)
 	if err != nil {

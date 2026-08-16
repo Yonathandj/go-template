@@ -47,8 +47,7 @@ type Databases struct {
 	SQLServer map[string]SQLServer `mapstructure:"sql_server" validate:"required,dive"`
 }
 
-// Pool holds shared connection-pool settings.
-// A zero value keeps the driver default for that setting.
+// Pool holds shared connection-pool settings; a zero value keeps the driver default.
 type Pool struct {
 	MaxOpenConns    int           `mapstructure:"max_open_conns"`
 	MaxIdleConns    int           `mapstructure:"max_idle_conns"`
