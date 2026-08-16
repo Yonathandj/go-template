@@ -35,7 +35,7 @@ func TestNewSQLServer(t *testing.T) {
 	gormOpen = func(gorm.Dialector, ...gorm.Option) (*gorm.DB, error) { return db, nil }
 	t.Cleanup(func() { gormOpen = orig })
 
-	got, err := NewSQLServer("localhost", 2222, "user", "password", "database", "encrypt=true", PoolConfig{MaxIdleConns: 1})
+	got, err := NewSQLServer("localhost", 2222, "user", "password", "database", "encrypt=true", PoolConfig{MaxIdleConns: 2})
 	if err != nil {
 		t.Fatalf("NewSQLServer: %v", err)
 	}

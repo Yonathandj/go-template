@@ -8,6 +8,7 @@ server:
   port:
   timeout:
   cors_origins: [] # e.g. ["https://app.example.com"]; empty disables CORS, ["*"] allows any origin
+  trusted_proxies: [] # e.g. ["10.0.0.0/8"]; empty trusts only the direct peer for client IPs
   max_body_bytes: 1048576 # 1 MiB; 0 uses the middleware default
 
 databases:
