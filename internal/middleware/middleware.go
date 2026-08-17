@@ -101,6 +101,7 @@ func Recovery(log *logger.Logger) gin.HandlerFunc {
 		defer func() {
 			if err := recover(); err != nil {
 				// ErrAbortHandler is the stdlib's deliberate "drop this connection" signal, not a bug.
+				//nolint:errorlint // recover() yields any, and net/http panics with the sentinel itself; it is never wrapped.
 				if err == http.ErrAbortHandler {
 					panic(err)
 				}

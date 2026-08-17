@@ -125,6 +125,7 @@ func TestDefaultChain(t *testing.T) {
 
 	t.Run("lets ErrAbortHandler through instead of logging it as a 500", func(t *testing.T) {
 		defer func() {
+			//nolint:errorlint // the middleware re-panics with the sentinel itself, so identity is what we want to assert.
 			if got := recover(); got != http.ErrAbortHandler {
 				t.Errorf("recovered %v, want ErrAbortHandler to propagate", got)
 			}

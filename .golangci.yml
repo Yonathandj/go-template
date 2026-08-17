@@ -1,0 +1,57 @@
+# Pinned so `make lint` means the same thing on every machine and in CI.
+# Written for golangci-lint v1.x; v2 needs `version: "2"` and a reshaped file.
+
+run:
+  timeout: 3m
+
+linters:
+  enable:
+    # Defaults (errcheck, govet, ineffassign, staticcheck, unused) stay on.
+    - bodyclose # an unclosed response body leaks a connection
+    - errorlint # %v instead of %w silently breaks errors.Is/As
+    - copyloopvar
+    - misspell
+    - nolintlint # a //nolint must say which linter and why
+    - revive # exported symbols need doc comments
+    - sqlclosecheck
+    - unconvert
+    - usestdlibvars
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+  revive:
+    rules:
+      - name: exported
+      - name: error-strings
+      - name: context-as-argument
+      - name: indent-error-flow
+  nolintlint:
+    require-explanation: true
+    require-specific: true
+
+issues:
+  exclude-rules:
+    # Generated contracts are rewritten by `make oapicodegen`; fixes there do not survive.
+    - path: internal/api/server/oapicodegen/
+      linters:
+        - revive
+        - misspell
+    # Error-path tests discard a nil response, which bodyclose cannot see is safe.
+    - path: _test\.go
+      linters:
+        - bodyclose
+    # Doc comments are required in pkg/, which is meant to be lifted into other
+    # services. Inside internal/ they would just restate the constructor's name.
+    # revive's other rules still apply here; only the `exported` one is dropped.
+    - path: internal/
+      text: "^exported:"
+      linters:
+        - revive
+  # golangci-lint v1 excludes revive's doc-comment findings by default, which would
+  # make the `exported` rule above a silent no-op. Put them back.
+  include:
+    - EXC0012
+    - EXC0013
+    - EXC0014
+    - EXC0015
