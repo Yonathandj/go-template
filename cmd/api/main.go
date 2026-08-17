@@ -22,13 +22,18 @@ const (
 )
 
 func main() {
-	if err := run(); err != nil {
+	// Signal handling lives here so run takes a plain context and stays testable.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if err := run(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() (err error) {
+// run serves until ctx is cancelled, then shuts down gracefully.
+func run(ctx context.Context) (err error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -59,9 +64,6 @@ func run() (err error) {
 		return fmt.Errorf("listen %s: %w", addr, err)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	srvErr := make(chan error, 1)
 	go func() {
 		if serveErr := srv.Serve(listener); !errors.Is(serveErr, http.ErrServerClosed) {
@@ -75,7 +77,6 @@ func run() (err error) {
 		return fmt.Errorf("serve: %w", serveErr)
 	case <-ctx.Done():
 	}
-	stop()
 
 	deps.Logger.Info("shutting down", map[string]any{"timeout": shutdownTimeout.String()})
 

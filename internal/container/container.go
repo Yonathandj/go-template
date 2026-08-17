@@ -51,9 +51,17 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 	return deps, nil
 }
 
+// Swapped in tests so the success paths below can run without a live server,
+// mirroring the gormOpen seam in pkg/database.
+var (
+	newPostgres  = database.NewPostgres
+	newSQLServer = database.NewSQLServer
+	newRedis     = redis.New
+)
+
 func (c *Container) open(cfg *config.Config) error {
 	for name, db := range cfg.Databases.Postgres {
-		conn, err := database.NewPostgres(db.Host, db.Port, db.User, db.Password, db.Database, db.Opts, database.PoolConfig{
+		conn, err := newPostgres(db.Host, db.Port, db.User, db.Password, db.Database, db.Opts, database.PoolConfig{
 			MaxOpenConns:    db.MaxOpenConns,
 			MaxIdleConns:    db.MaxIdleConns,
 			ConnMaxLifetime: db.ConnMaxLifetime,
@@ -66,7 +74,7 @@ func (c *Container) open(cfg *config.Config) error {
 	}
 
 	for name, db := range cfg.Databases.SQLServer {
-		conn, err := database.NewSQLServer(db.Host, db.Port, db.User, db.Password, db.Database, db.Opts, database.PoolConfig{
+		conn, err := newSQLServer(db.Host, db.Port, db.User, db.Password, db.Database, db.Opts, database.PoolConfig{
 			MaxOpenConns:    db.MaxOpenConns,
 			MaxIdleConns:    db.MaxIdleConns,
 			ConnMaxLifetime: db.ConnMaxLifetime,
@@ -79,7 +87,7 @@ func (c *Container) open(cfg *config.Config) error {
 	}
 
 	for name, cache := range cfg.Redis {
-		client, err := redis.New(cache.Host, cache.Port, cache.User, cache.Password, cache.DB, cache.TLS, redis.PoolConfig{
+		client, err := newRedis(cache.Host, cache.Port, cache.User, cache.Password, cache.DB, cache.TLS, redis.PoolConfig{
 			PoolSize:        cache.PoolSize,
 			MinIdleConns:    cache.MinIdleConns,
 			ConnMaxLifetime: cache.ConnMaxLifetime,

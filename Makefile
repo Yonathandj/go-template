@@ -11,7 +11,7 @@ PORT  ?= 8080
 # Pinned: .golangci.yml uses the v1 config format, which v2 does not read.
 GOLANGCI_VERSION ?= 1.64.8
 
-.PHONY: help run test cover vet lint lint-install fmt check tidy build build-all clean oapicodegen docker-build docker-run
+.PHONY: help run test cover cover-gaps vet lint lint-install fmt check tidy build build-all clean oapicodegen docker-build docker-run
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-12s %s\n", $$1, $$2}'
@@ -23,9 +23,29 @@ run: ## Run an app (APP=name, default $(APP))
 test: ## Run tests with race detector
 	go test -race ./...
 
+# Generated contracts are excluded: they are machine-written and rewritten by
+# `make oapicodegen`. -coverpkg credits code exercised from another package's tests,
+# which is how the modules are reached through the router.
+COVERPKG = $(shell go list ./... | grep -v oapicodegen | paste -sd,)
+
+# -coverpkg credits code exercised from another package's tests, which is how the
+# modules are reached through the router. The cost is that go test then appends the
+# whole package list to every line, and each per-package percentage becomes "how much
+# of everything this package's tests touched" rather than how covered that package is.
+# Both are noise, so drop them; the merged total below is the number that means something.
+#
+# pipefail is set inline, not via .SHELLFLAGS: make 3.81 (what macOS still ships) ignores
+# that variable, and without pipefail a failing go test piped into sed reports success.
+COVERTEST = set -o pipefail; go test -coverpkg=$(COVERPKG) -coverprofile=coverage.out ./... | sed 's/coverage:.*//'
+
 cover: ## Run tests and open coverage report
-	go test -coverprofile=coverage.out ./...
+	$(COVERTEST)
+	@go tool cover -func=coverage.out | tail -1
 	go tool cover -html=coverage.out
+
+cover-gaps: ## List every function that is not fully covered
+	@$(COVERTEST) | grep -vE '^(ok|\?)' || true
+	@go tool cover -func=coverage.out | grep -v '100.0%$$' || echo "every function is fully covered"
 
 vet: ## go vet
 	go vet ./...
