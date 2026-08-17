@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Example API
-  description: Example API for demonstrating Redis integration.
+  description: One example module over both dependencies - a Redis counter and notes stored in PostgreSQL.
   version: 1.0.0
 tags:
   - name: example
@@ -20,6 +20,63 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetExampleVisitsResponse'
+  /example/notes:
+    get:
+      operationId: listExampleNotes
+      tags:
+        - example
+      summary: List example notes
+      description: Returns the most recently created notes.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of notes to return.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: The notes, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Note'
+        '400':
+          description: The request was malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      operationId: createExampleNote
+      tags:
+        - example
+      summary: Create an example note
+      description: Stores a note and returns it with its generated identifier.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNoteRequest'
+      responses:
+        '201':
+          description: The stored note.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        '400':
+          description: The request was malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 components:
   schemas:
     GetExampleVisitsResponse:
@@ -31,4 +88,54 @@ components:
           type: integer
           format: int64
           description: Number of times this endpoint has been called.
-          example: 42
+          example: 1
+    Note:
+      type: object
+      required:
+        - id
+        - title
+        - body
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Generated identifier.
+          example: 1
+        title:
+          type: string
+          description: Short label for the note.
+          example: First note
+        body:
+          type: string
+          description: Free-form contents.
+          example: Written from the example module.
+        created_at:
+          type: string
+          format: date-time
+          description: When the note was stored.
+    CreateNoteRequest:
+      type: object
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Short label for the note.
+          example: First note
+        body:
+          type: string
+          maxLength: 4000
+          description: Free-form contents.
+          example: Written from the example module.
+    Error:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: What went wrong.
+          example: title is required

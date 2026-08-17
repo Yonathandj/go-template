@@ -33,8 +33,10 @@ func NewRouter(cfg *config.Config, deps *container.Container) (*gin.Engine, erro
 func register(router gin.IRouter, deps *container.Container) {
 	healthcontract.RegisterHandlers(router, healthcontract.NewStrictHandler(health.NewHandler(), nil))
 
-	// Modules that need a dependency are mounted only when that dependency is configured.
-	if client := deps.Redis["example"]; client != nil {
-		examplecontract.RegisterHandlers(router, examplecontract.NewStrictHandler(example.NewHandler(client), nil))
+	// A module is mounted only when every dependency it needs is configured, so an
+	// unconfigured one means a 404 rather than a nil panic on the first request.
+	if client, db := deps.Redis["example"], deps.Postgres["example"]; client != nil && db != nil {
+		service := example.NewService(client, example.NewRepository(db))
+		examplecontract.RegisterHandlers(router, examplecontract.NewStrictHandler(example.NewHandler(service), nil))
 	}
 }

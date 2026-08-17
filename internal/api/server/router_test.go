@@ -4,12 +4,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
 	goredis "github.com/redis/go-redis/v9"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 
 	"github.com/supernurture/go-template/internal/config"
 	"github.com/supernurture/go-template/internal/container"
@@ -34,6 +38,45 @@ func newTestDeps(t *testing.T) *container.Container {
 	t.Cleanup(func() { _ = log.Close() })
 
 	return &container.Container{Logger: log}
+}
+
+func withRedis(t *testing.T, deps *container.Container) *container.Container {
+	t.Helper()
+	server := miniredis.RunT(t)
+	port, err := strconv.Atoi(server.Port())
+	if err != nil {
+		t.Fatalf("miniredis port %q: %v", server.Port(), err)
+	}
+	client, err := redis.New(server.Host(), port, "", "", 0, false, redis.PoolConfig{})
+	if err != nil {
+		t.Fatalf("redis.New: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+
+	deps.Redis = map[string]*goredis.Client{"example": client}
+	return deps
+}
+
+// The module only builds a repository at registration, so a mock connection is enough
+// to mount it; queries are asserted per test.
+func withPostgres(t *testing.T, deps *container.Container) (*container.Container, sqlmock.Sqlmock) {
+	t.Helper()
+	sqlDB, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	db, err := gorm.Open(
+		postgres.New(postgres.Config{Conn: sqlDB, PreferSimpleProtocol: true}),
+		&gorm.Config{DisableAutomaticPing: true},
+	)
+	if err != nil {
+		t.Fatalf("gorm.Open: %v", err)
+	}
+
+	deps.Postgres = map[string]*gorm.DB{"example": db}
+	return deps, mock
 }
 
 func newTestRouter(t *testing.T, cfg *config.Config, deps *container.Container) *gin.Engine {
@@ -66,40 +109,65 @@ func TestNewRouterServesHealth(t *testing.T) {
 	}
 }
 
-// The example module reaches its dependency, proving the container-to-handler wiring.
-func TestNewRouterServesExampleWithRedis(t *testing.T) {
-	server := miniredis.RunT(t)
-	port, err := strconv.Atoi(server.Port())
-	if err != nil {
-		t.Fatalf("miniredis port %q: %v", server.Port(), err)
-	}
-	client, err := redis.New(server.Host(), port, "", "", 0, false, redis.PoolConfig{})
-	if err != nil {
-		t.Fatalf("redis.New: %v", err)
-	}
-	t.Cleanup(func() { _ = client.Close() })
-
-	deps := newTestDeps(t)
-	deps.Redis = map[string]*goredis.Client{"example": client}
+// The example module reaches both of its dependencies, proving the container-to-handler wiring.
+func TestNewRouterServesExample(t *testing.T) {
+	deps, mock := withPostgres(t, withRedis(t, newTestDeps(t)))
 	router := newTestRouter(t, testConfig(), deps)
 
-	for _, want := range []string{`{"visits":1}`, `{"visits":2}`} {
-		rec := get(t, router, "/example/visits")
+	t.Run("visits counter comes from redis", func(t *testing.T) {
+		for _, want := range []string{`{"visits":1}`, `{"visits":2}`} {
+			rec := get(t, router, "/example/visits")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+			}
+			if got := rec.Body.String(); got != want+"\n" && got != want {
+				t.Errorf("body = %q, want %q", got, want)
+			}
+		}
+	})
+
+	t.Run("notes come from postgres", func(t *testing.T) {
+		created := time.Date(2026, 8, 17, 10, 30, 0, 0, time.UTC)
+		mock.ExpectQuery(`SELECT \* FROM "example_notes"`).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "title", "body", "created_at"}).
+				AddRow(int64(1), "First note", "the body", created))
+
+		rec := get(t, router, "/example/notes")
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 		}
-		if got := rec.Body.String(); got != want+"\n" && got != want {
-			t.Errorf("body = %q, want %q", got, want)
+		if got := rec.Body.String(); !strings.Contains(got, `"title":"First note"`) {
+			t.Errorf("body = %q, want the stored note", got)
 		}
-	}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Error(err)
+		}
+	})
 }
 
-// Without the dependency the module is never mounted, so the route simply does not exist.
-func TestNewRouterSkipsExampleWithoutRedis(t *testing.T) {
-	rec := get(t, newTestRouter(t, testConfig(), newTestDeps(t)), "/example/visits")
+// A module needs every one of its dependencies, so a partial setup mounts nothing
+// rather than serving a route that would panic on the first request.
+func TestNewRouterSkipsExampleWithoutEveryDependency(t *testing.T) {
+	paths := []string{"/example/visits", "/example/notes"}
 
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	setups := map[string]func(t *testing.T) *container.Container{
+		"nothing configured": func(t *testing.T) *container.Container { return newTestDeps(t) },
+		"only redis":         func(t *testing.T) *container.Container { return withRedis(t, newTestDeps(t)) },
+		"only postgres": func(t *testing.T) *container.Container {
+			deps, _ := withPostgres(t, newTestDeps(t))
+			return deps
+		},
+	}
+
+	for name, setup := range setups {
+		t.Run(name, func(t *testing.T) {
+			router := newTestRouter(t, testConfig(), setup(t))
+			for _, path := range paths {
+				if rec := get(t, router, path); rec.Code != http.StatusNotFound {
+					t.Errorf("%s: status = %d, want %d", path, rec.Code, http.StatusNotFound)
+				}
+			}
+		})
 	}
 }
 

@@ -8,10 +8,27 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/oapi-codegen/runtime"
 	strictgin "github.com/oapi-codegen/runtime/strictmiddleware/gin"
 )
+
+// CreateNoteRequest defines model for CreateNoteRequest.
+type CreateNoteRequest struct {
+	// Body Free-form contents.
+	Body *string `json:"body,omitempty"`
+
+	// Title Short label for the note.
+	Title string `json:"title"`
+}
+
+// Error defines model for Error.
+type Error struct {
+	// Message What went wrong.
+	Message string `json:"message"`
+}
 
 // GetExampleVisitsResponse defines model for GetExampleVisitsResponse.
 type GetExampleVisitsResponse struct {
@@ -19,8 +36,38 @@ type GetExampleVisitsResponse struct {
 	Visits int64 `json:"visits"`
 }
 
+// Note defines model for Note.
+type Note struct {
+	// Body Free-form contents.
+	Body string `json:"body"`
+
+	// CreatedAt When the note was stored.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id Generated identifier.
+	Id int64 `json:"id"`
+
+	// Title Short label for the note.
+	Title string `json:"title"`
+}
+
+// ListExampleNotesParams defines parameters for ListExampleNotes.
+type ListExampleNotesParams struct {
+	// Limit Maximum number of notes to return.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// CreateExampleNoteJSONRequestBody defines body for CreateExampleNote for application/json ContentType.
+type CreateExampleNoteJSONRequestBody = CreateNoteRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// List example notes
+	// (GET /example/notes)
+	ListExampleNotes(c *gin.Context, params ListExampleNotesParams)
+	// Create an example note
+	// (POST /example/notes)
+	CreateExampleNote(c *gin.Context)
 	// Get example visits
 	// (GET /example/visits)
 	GetExampleVisits(c *gin.Context)
@@ -34,6 +81,45 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(c *gin.Context)
+
+// ListExampleNotes operation middleware
+func (siw *ServerInterfaceWrapper) ListExampleNotes(c *gin.Context) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListExampleNotesParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", c.Request.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListExampleNotes(c, params)
+}
+
+// CreateExampleNote operation middleware
+func (siw *ServerInterfaceWrapper) CreateExampleNote(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateExampleNote(c)
+}
 
 // GetExampleVisits operation middleware
 func (siw *ServerInterfaceWrapper) GetExampleVisits(c *gin.Context) {
@@ -75,7 +161,61 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 		ErrorHandler:       errorHandler,
 	}
 
+	router.GET(options.BaseURL+"/example/notes", wrapper.ListExampleNotes)
+	router.POST(options.BaseURL+"/example/notes", wrapper.CreateExampleNote)
 	router.GET(options.BaseURL+"/example/visits", wrapper.GetExampleVisits)
+}
+
+type ListExampleNotesRequestObject struct {
+	Params ListExampleNotesParams
+}
+
+type ListExampleNotesResponseObject interface {
+	VisitListExampleNotesResponse(w http.ResponseWriter) error
+}
+
+type ListExampleNotes200JSONResponse []Note
+
+func (response ListExampleNotes200JSONResponse) VisitListExampleNotesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListExampleNotes400JSONResponse Error
+
+func (response ListExampleNotes400JSONResponse) VisitListExampleNotesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateExampleNoteRequestObject struct {
+	Body *CreateExampleNoteJSONRequestBody
+}
+
+type CreateExampleNoteResponseObject interface {
+	VisitCreateExampleNoteResponse(w http.ResponseWriter) error
+}
+
+type CreateExampleNote201JSONResponse Note
+
+func (response CreateExampleNote201JSONResponse) VisitCreateExampleNoteResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateExampleNote400JSONResponse Error
+
+func (response CreateExampleNote400JSONResponse) VisitCreateExampleNoteResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
 }
 
 type GetExampleVisitsRequestObject struct {
@@ -96,6 +236,12 @@ func (response GetExampleVisits200JSONResponse) VisitGetExampleVisitsResponse(w 
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// List example notes
+	// (GET /example/notes)
+	ListExampleNotes(ctx context.Context, request ListExampleNotesRequestObject) (ListExampleNotesResponseObject, error)
+	// Create an example note
+	// (POST /example/notes)
+	CreateExampleNote(ctx context.Context, request CreateExampleNoteRequestObject) (CreateExampleNoteResponseObject, error)
 	// Get example visits
 	// (GET /example/visits)
 	GetExampleVisits(ctx context.Context, request GetExampleVisitsRequestObject) (GetExampleVisitsResponseObject, error)
@@ -111,6 +257,66 @@ func NewStrictHandler(ssi StrictServerInterface, middlewares []StrictMiddlewareF
 type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
+}
+
+// ListExampleNotes operation middleware
+func (sh *strictHandler) ListExampleNotes(ctx *gin.Context, params ListExampleNotesParams) {
+	var request ListExampleNotesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListExampleNotes(ctx, request.(ListExampleNotesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListExampleNotes")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		ctx.Error(err)
+		ctx.Status(http.StatusInternalServerError)
+	} else if validResponse, ok := response.(ListExampleNotesResponseObject); ok {
+		if err := validResponse.VisitListExampleNotesResponse(ctx.Writer); err != nil {
+			ctx.Error(err)
+		}
+	} else if response != nil {
+		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateExampleNote operation middleware
+func (sh *strictHandler) CreateExampleNote(ctx *gin.Context) {
+	var request CreateExampleNoteRequestObject
+
+	var body CreateExampleNoteJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		ctx.Status(http.StatusBadRequest)
+		ctx.Error(err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateExampleNote(ctx, request.(CreateExampleNoteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateExampleNote")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		ctx.Error(err)
+		ctx.Status(http.StatusInternalServerError)
+	} else if validResponse, ok := response.(CreateExampleNoteResponseObject); ok {
+		if err := validResponse.VisitCreateExampleNoteResponse(ctx.Writer); err != nil {
+			ctx.Error(err)
+		}
+	} else if response != nil {
+		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetExampleVisits operation middleware
