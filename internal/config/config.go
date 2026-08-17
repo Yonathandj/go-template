@@ -19,7 +19,6 @@ type Config struct {
 	Databases Databases          `mapstructure:"databases"`
 	Redis     map[string]Redis   `mapstructure:"redis"     validate:"omitempty,dive"`
 	Services  map[string]Service `mapstructure:"services"  validate:"omitempty,dive"`
-	Worker    map[string]Worker  `mapstructure:"worker"    validate:"omitempty,dive"`
 	Logger    Logger             `mapstructure:"logger"    validate:"required"`
 }
 
@@ -97,12 +96,6 @@ type Service struct {
 type ServiceAuth struct {
 	User     string `mapstructure:"user"`
 	Password string `mapstructure:"password"`
-}
-
-// Worker holds a scheduled worker's enable flag and run interval.
-type Worker struct {
-	Enabled      bool          `mapstructure:"enabled"`
-	TimeInterval time.Duration `mapstructure:"time_interval" validate:"required,gt=0"`
 }
 
 // Logger holds log output, level, and rotation settings.

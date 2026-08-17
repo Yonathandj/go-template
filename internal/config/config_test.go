@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 // validConfig is the smallest config that passes validation: every optional block omitted.
@@ -47,6 +49,54 @@ func configFile() string {
 	return filepath.Join(configPath, configName+"."+configType)
 }
 
+// repoFile reads a file from the repository root, before chdirTemp moves us away.
+func repoFile(t *testing.T, name string) string {
+	t.Helper()
+	contents, err := os.ReadFile(filepath.Join("..", "..", name))
+	if err != nil {
+		t.Fatalf("read %s: %v", name, err)
+	}
+	return string(contents)
+}
+
+// The README quickstart is two copies and a run, so the shipped examples have to
+// load unedited — including the inline comments in .env.example.
+func TestQuickstartExamplesLoad(t *testing.T) {
+	exampleConfig := repoFile(t, filepath.Join(configPath, configName+".example."+configType))
+	exampleEnv := repoFile(t, dotEnvPath+".example")
+
+	// godotenv exports into the process, so undo it rather than leak into later tests.
+	vars, err := godotenv.Unmarshal(exampleEnv)
+	if err != nil {
+		t.Fatalf("parse .env.example: %v", err)
+	}
+	t.Cleanup(func() {
+		for key := range vars {
+			_ = os.Unsetenv(key)
+		}
+	})
+
+	chdirTemp(t)
+	writeFile(t, configFile(), exampleConfig)
+	writeFile(t, dotEnvPath, exampleEnv)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	// The example must configure exactly what compose.yaml brings up: anything else
+	// is opened and pinged at startup and would fail the first run.
+	if len(cfg.Databases.Postgres) != 1 || len(cfg.Redis) != 1 || len(cfg.Databases.SQLServer) != 0 {
+		t.Errorf("postgres = %v, redis = %v, sql_server = %v; want one postgres, one redis, no sql server",
+			cfg.Databases.Postgres, cfg.Redis, cfg.Databases.SQLServer)
+	}
+	// A trailing comment left in the value would slip past validation for a free-form field.
+	if got := cfg.Databases.Postgres["example"].User; got != "postgres" {
+		t.Errorf("postgres user = %q, want %q from .env.example", got, "postgres")
+	}
+}
+
 func TestLoad(t *testing.T) {
 	chdirTemp(t)
 	writeFile(t, configFile(), validConfig)
@@ -65,9 +115,9 @@ func TestLoad(t *testing.T) {
 	if got := cfg.Server.TrustedProxies; len(got) != 1 || got[0] != "10.0.0.0/8" {
 		t.Errorf("server.trusted_proxies = %v, want [10.0.0.0/8]", got)
 	}
-	// Services, Worker and Databases are optional; omitting them must not fail validation.
-	if len(cfg.Services) != 0 || len(cfg.Worker) != 0 {
-		t.Errorf("services = %v, worker = %v, want both empty", cfg.Services, cfg.Worker)
+	// Services and Databases are optional; omitting them must not fail validation.
+	if len(cfg.Services) != 0 || len(cfg.Databases.Postgres) != 0 {
+		t.Errorf("services = %v, postgres = %v, want both empty", cfg.Services, cfg.Databases.Postgres)
 	}
 }
 
