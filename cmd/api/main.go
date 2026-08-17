@@ -43,7 +43,7 @@ func run() (err error) {
 		}
 	}()
 
-	router, err := server.NewRouter(cfg, deps.Logger)
+	router, err := server.NewRouter(cfg, deps)
 	if err != nil {
 		return err
 	}

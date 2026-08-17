@@ -11,7 +11,7 @@ import (
 
 func TestOptions(t *testing.T) {
 	pool := PoolConfig{PoolSize: 8, MinIdleConns: 2, ConnMaxLifetime: time.Minute}
-	opts := newOptions("cache.example.com", 6480, "user", "password", 4, true, pool)
+	opts := opts("cache.example.com", 6480, "user", "password", 4, true, pool)
 
 	if got, want := opts.Addr, "cache.example.com:6480"; got != want {
 		t.Errorf("Addr = %q, want %q", got, want)
@@ -36,7 +36,7 @@ func TestOptions(t *testing.T) {
 }
 
 func TestOptionsWithoutTLS(t *testing.T) {
-	if opts := newOptions("localhost", 6480, "", "", 0, false, PoolConfig{}); opts.TLSConfig != nil {
+	if opts := opts("localhost", 6480, "", "", 0, false, PoolConfig{}); opts.TLSConfig != nil {
 		t.Error("TLSConfig set even though TLS was not requested")
 	}
 }

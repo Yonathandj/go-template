@@ -71,6 +71,55 @@ func TestLoad(t *testing.T) {
 	}
 }
 
+// Pool sizing now lives on each datastore, and a mistyped mapstructure tag would silently leave it zero.
+const datastoreConfig = validConfig + `
+databases:
+  postgres:
+    primary:
+      host: db.internal
+      port: 5432
+      user: app
+      password: secret
+      database: app
+      max_open_conns: 25
+      max_idle_conns: 5
+      conn_max_lifetime: 30m
+redis:
+  cache:
+    host: cache.internal
+    port: 6379
+    db: 2
+    pool_size: 20
+    min_idle_conns: 4
+    conn_max_lifetime: 1h
+`
+
+func TestLoadDatastorePools(t *testing.T) {
+	chdirTemp(t)
+	writeFile(t, configFile(), datastoreConfig)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	postgres, ok := cfg.Databases.Postgres["primary"]
+	if !ok {
+		t.Fatalf("databases.postgres = %v, want a %q entry", cfg.Databases.Postgres, "primary")
+	}
+	if postgres.MaxOpenConns != 25 || postgres.MaxIdleConns != 5 || postgres.ConnMaxLifetime != 30*time.Minute {
+		t.Errorf("postgres pool = %+v, want 25/5/30m", postgres)
+	}
+
+	cache, ok := cfg.Redis["cache"]
+	if !ok {
+		t.Fatalf("redis = %v, want a %q entry", cfg.Redis, "cache")
+	}
+	if cache.DB != 2 || cache.PoolSize != 20 || cache.MinIdleConns != 4 || cache.ConnMaxLifetime != time.Hour {
+		t.Errorf("redis pool = %+v, want db 2 and 20/4/1h", cache)
+	}
+}
+
 func TestLoadEnvOverridesFile(t *testing.T) {
 	chdirTemp(t)
 	writeFile(t, configFile(), validConfig)

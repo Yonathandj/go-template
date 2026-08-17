@@ -12,11 +12,6 @@ server:
   max_body_bytes: 1048576 # 1 MiB; 0 uses the middleware default
 
 databases:
-  # shared connection-pool settings applied to every driver.
-  pool:
-    max_open_conns: 25
-    max_idle_conns: 5
-    conn_max_lifetime: 30m # 30s, 30m, 1h
   postgres:
     example:
       host:
@@ -25,6 +20,9 @@ databases:
       password:
       database: example
       opts: sslmode=disable
+      max_open_conns: 25 # 0 keeps the driver default
+      max_idle_conns: 5
+      conn_max_lifetime: 30m # 30s, 30m, 1h
   sql_server:
     example:
       host:
@@ -33,6 +31,21 @@ databases:
       password:
       database: example
       opts: encrypt=disable
+      max_open_conns: 25
+      max_idle_conns: 5
+      conn_max_lifetime: 30m
+
+redis:
+  example:
+    host:
+    port:
+    user:
+    password:
+    db: 0
+    tls: false # true for managed Redis with in-transit encryption
+    pool_size: 0
+    min_idle_conns: 0
+    conn_max_lifetime: 30m
 
 services:
   example:

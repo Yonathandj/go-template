@@ -17,6 +17,7 @@ type Config struct {
 	App       App                `mapstructure:"app"       validate:"required"`
 	Server    Server             `mapstructure:"server"    validate:"required"`
 	Databases Databases          `mapstructure:"databases"`
+	Redis     map[string]Redis   `mapstructure:"redis"     validate:"omitempty,dive"`
 	Services  map[string]Service `mapstructure:"services"  validate:"omitempty,dive"`
 	Worker    map[string]Worker  `mapstructure:"worker"    validate:"omitempty,dive"`
 	Logger    Logger             `mapstructure:"logger"    validate:"required"`
@@ -39,38 +40,49 @@ type Server struct {
 	MaxBodyBytes   int64         `mapstructure:"max_body_bytes"  validate:"gte=0"`
 }
 
-// Databases holds every configured datastore, keyed by logical name, plus the pool settings shared by all of them.
+// Databases holds every configured datastore, keyed by logical name.
 type Databases struct {
-	Pool      Pool                 `mapstructure:"pool"`
 	Postgres  map[string]Postgres  `mapstructure:"postgres"   validate:"omitempty,dive"`
 	SQLServer map[string]SQLServer `mapstructure:"sql_server" validate:"omitempty,dive"`
 }
 
-// Pool holds shared connection-pool settings; a zero value keeps the driver default.
-type Pool struct {
-	MaxOpenConns    int           `mapstructure:"max_open_conns"`
-	MaxIdleConns    int           `mapstructure:"max_idle_conns"`
+// Postgres holds connection and pool settings for a PostgreSQL database.
+type Postgres struct {
+	Host            string        `mapstructure:"host"              validate:"required"`
+	Port            int           `mapstructure:"port"              validate:"required,min=1,max=65535"`
+	User            string        `mapstructure:"user"              validate:"required"`
+	Password        string        `mapstructure:"password"          validate:"required"`
+	Database        string        `mapstructure:"database"          validate:"required"`
+	Opts            string        `mapstructure:"opts"`
+	MaxOpenConns    int           `mapstructure:"max_open_conns"    validate:"gte=0"`
+	MaxIdleConns    int           `mapstructure:"max_idle_conns"    validate:"gte=0"`
 	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
 }
 
-// Postgres holds connection settings for a PostgreSQL database.
-type Postgres struct {
-	Host     string `mapstructure:"host"     validate:"required"`
-	Port     int    `mapstructure:"port"     validate:"required,min=1,max=65535"`
-	User     string `mapstructure:"user"     validate:"required"`
-	Password string `mapstructure:"password" validate:"required"`
-	Database string `mapstructure:"database" validate:"required"`
-	Opts     string `mapstructure:"opts"`
+// SQLServer holds connection and pool settings for a SQL Server database.
+type SQLServer struct {
+	Host            string        `mapstructure:"host"              validate:"required"`
+	Port            int           `mapstructure:"port"              validate:"required,min=1,max=65535"`
+	User            string        `mapstructure:"user"              validate:"required"`
+	Password        string        `mapstructure:"password"          validate:"required"`
+	Database        string        `mapstructure:"database"          validate:"required"`
+	Opts            string        `mapstructure:"opts"`
+	MaxOpenConns    int           `mapstructure:"max_open_conns"    validate:"gte=0"`
+	MaxIdleConns    int           `mapstructure:"max_idle_conns"    validate:"gte=0"`
+	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
 }
 
-// SQLServer holds connection settings for a SQL Server database.
-type SQLServer struct {
-	Host     string `mapstructure:"host"     validate:"required"`
-	Port     int    `mapstructure:"port"     validate:"required,min=1,max=65535"`
-	User     string `mapstructure:"user"     validate:"required"`
-	Password string `mapstructure:"password" validate:"required"`
-	Database string `mapstructure:"database" validate:"required"`
-	Opts     string `mapstructure:"opts"`
+// Redis holds connection and pool settings for a Redis server.
+type Redis struct {
+	Host            string        `mapstructure:"host"              validate:"required"`
+	Port            int           `mapstructure:"port"              validate:"required,min=1,max=65535"`
+	User            string        `mapstructure:"user"`
+	Password        string        `mapstructure:"password"`
+	DB              int           `mapstructure:"db"                validate:"gte=0"`
+	TLS             bool          `mapstructure:"tls"`
+	PoolSize        int           `mapstructure:"pool_size"         validate:"gte=0"`
+	MinIdleConns    int           `mapstructure:"min_idle_conns"    validate:"gte=0"`
+	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
 }
 
 // Service holds the base URL, endpoints, timeout, and auth for an upstream service.

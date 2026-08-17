@@ -1,0 +1,34 @@
+openapi: 3.0.3
+info:
+  title: Example API
+  description: Example API for demonstrating Redis integration.
+  version: 1.0.0
+tags:
+  - name: example
+paths:
+  /example/visits:
+    get:
+      operationId: getExampleVisits
+      tags:
+        - example
+      summary: Get example visits
+      description: Increments a counter in Redis and returns the new value.
+      responses:
+        '200':
+          description: The visit counter after this request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetExampleVisitsResponse'
+components:
+  schemas:
+    GetExampleVisitsResponse:
+      type: object
+      required:
+        - visits
+      properties:
+        visits:
+          type: integer
+          format: int64
+          description: Number of times this endpoint has been called.
+          example: 42
