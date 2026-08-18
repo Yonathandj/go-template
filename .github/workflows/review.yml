@@ -1,6 +1,7 @@
 name: Review
 
 on:
+  push:
   pull_request:
     branches: [main]
 
