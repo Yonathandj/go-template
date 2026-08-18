@@ -1,0 +1,25 @@
+name: Review
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: supernurture/agnostic-pipeline-review@v1
+        with:
+          reviews: code,vulnerability,commit-message
+          fail-on: high
+          scope: changed
+          pr-comment: "true"
