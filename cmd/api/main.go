@@ -17,22 +17,32 @@ import (
 )
 
 const (
+	readHeaderTimeout = 5 * time.Second
+	writeSlack        = 5 * time.Second
+
+	readTimeout = 15 * time.Second
+	idleTimeout = 60 * time.Second
+)
+
+var (
+	exit      = os.Exit
+	listen    = net.Listen
+	newRouter = server.NewRouter
+	closeDeps = func(deps *container.Container) error { return deps.Close() }
+
 	shutdownTimeout = 8 * time.Second
-	idleTimeout     = 60 * time.Second
 )
 
 func main() {
-	// Signal handling lives here so run takes a plain context and stays testable.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	if err := run(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		exit(1)
 	}
 }
 
-// run serves until ctx is cancelled, then shuts down gracefully.
 func run(ctx context.Context) (err error) {
 	cfg, err := config.Load()
 	if err != nil {
@@ -43,41 +53,42 @@ func run(ctx context.Context) (err error) {
 		return err
 	}
 	defer func() {
-		if closeErr := deps.Close(); closeErr != nil && err == nil {
+		if closeErr := closeDeps(deps); closeErr != nil && err == nil {
 			err = fmt.Errorf("close dependencies: %w", closeErr)
 		}
 	}()
 
-	router, err := server.NewRouter(cfg, deps)
+	router, err := newRouter(cfg, deps)
 	if err != nil {
 		return err
 	}
 	srv := &http.Server{
 		Handler:           router,
-		ReadHeaderTimeout: cfg.Server.Timeout,
+		ReadHeaderTimeout: readHeaderTimeout,
+		WriteTimeout:      cfg.Server.Timeout + writeSlack,
+		ReadTimeout:       readTimeout,
 		IdleTimeout:       idleTimeout,
 	}
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
-	listener, err := net.Listen("tcp", addr)
+	listener, err := listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", addr, err)
 	}
 
-	srvErr := make(chan error, 1)
+	serveErrCh := make(chan error, 1)
 	go func() {
 		if serveErr := srv.Serve(listener); !errors.Is(serveErr, http.ErrServerClosed) {
-			srvErr <- serveErr
+			serveErrCh <- serveErr
 		}
 	}()
 	deps.Logger.Info("server listening", map[string]any{"addr": listener.Addr().String()})
 
 	select {
-	case serveErr := <-srvErr:
+	case serveErr := <-serveErrCh:
 		return fmt.Errorf("serve: %w", serveErr)
 	case <-ctx.Done():
 	}
-
 	deps.Logger.Info("shutting down", map[string]any{"timeout": shutdownTimeout.String()})
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
