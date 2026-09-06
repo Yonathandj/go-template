@@ -14,12 +14,12 @@ import (
 
 // Config struct defines the structure of the configuration file.
 type Config struct {
-	App       App                `mapstructure:"app"       validate:"required"`
-	Server    Server             `mapstructure:"server"    validate:"required"`
+	App       App                `mapstructure:"app"`
+	Server    Server             `mapstructure:"server"`
 	Databases Databases          `mapstructure:"databases"`
 	Redis     map[string]Redis   `mapstructure:"redis"     validate:"omitempty,dive"`
 	Services  map[string]Service `mapstructure:"services"  validate:"omitempty,dive"`
-	Logger    Logger             `mapstructure:"logger"    validate:"required"`
+	Logger    Logger             `mapstructure:"logger"`
 }
 
 // App holds application identity and environment.
@@ -86,8 +86,8 @@ type Redis struct {
 
 // Service holds the base URL, endpoints, timeout, and auth for an upstream service.
 type Service struct {
-	BaseURL   string            `mapstructure:"base_url"  validate:"required"`
-	Endpoints map[string]string `mapstructure:"endpoints" validate:"required"`
+	BaseURL   string            `mapstructure:"base_url"  validate:"required,url"`
+	Endpoints map[string]string `mapstructure:"endpoints" validate:"required,min=1,dive,required"`
 	Timeout   time.Duration     `mapstructure:"timeout"   validate:"required,gt=0"`
 	Auth      ServiceAuth       `mapstructure:"auth"`
 }
@@ -116,7 +116,7 @@ const (
 	configPath = "configs/"
 )
 
-// Load reads configs/config.yaml, overlays .env and environment variables, and validates the result before returning it.
+// Load reads configs/config.yaml, overlays .env and the environment, and validates the result before returning it.
 func Load() (*Config, error) {
 	if err := godotenv.Load(dotEnvPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("load %s: %w", dotEnvPath, err)
@@ -131,7 +131,8 @@ func Load() (*Config, error) {
 
 	if err := vip.ReadInConfig(); err != nil {
 		if _, notFound := errors.AsType[viper.ConfigFileNotFoundError](err); notFound {
-			return nil, fmt.Errorf("no %s%s.%s: copy %[1]sconfig.example.%[3]s and fill it in", configPath, configName, configType)
+			return nil, fmt.Errorf("no %s%s.%s: copy %[1]sconfig.example.%[3]s and fill it in",
+				configPath, configName, configType)
 		}
 		return nil, fmt.Errorf("read config file: %w", err)
 	}
