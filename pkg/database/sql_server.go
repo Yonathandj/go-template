@@ -9,19 +9,6 @@ import (
 	"gorm.io/gorm"
 )
 
-func sqlServerDSN(host string, port int, user string, password string, database string, opts string) string {
-	dsn := url.URL{
-		Scheme:   "sqlserver",
-		User:     url.UserPassword(user, password),
-		Host:     fmt.Sprintf("%s:%d", host, port),
-		RawQuery: url.Values{"database": {database}}.Encode(),
-	}
-	if opts != "" {
-		dsn.RawQuery += "&" + opts
-	}
-	return dsn.String()
-}
-
 // NewSQLServer opens a pooled GORM connection to a SQL Server database and pings it.
 func NewSQLServer(
 	host string, port int, user string, password string, database string, opts string, pool PoolConfig,
@@ -49,4 +36,17 @@ func NewSQLServer(
 
 	log.Printf("connected to SQL Server database %q at %s:%d\n", database, host, port)
 	return db, nil
+}
+
+func sqlServerDSN(host string, port int, user string, password string, database string, opts string) string {
+	dsn := url.URL{
+		Scheme:   "sqlserver",
+		User:     url.UserPassword(user, password),
+		Host:     fmt.Sprintf("%s:%d", host, port),
+		RawQuery: url.Values{"database": {database}}.Encode(),
+	}
+	if opts != "" {
+		dsn.RawQuery += "&" + opts
+	}
+	return dsn.String()
 }

@@ -15,10 +15,6 @@ type ValidationError struct {
 
 func (e ValidationError) Error() string { return e.Message }
 
-func invalid(format string, args ...any) error {
-	return ValidationError{Message: fmt.Sprintf(format, args...)}
-}
-
 type Service struct {
 	redis *goredis.Client
 	notes *Repository
@@ -70,4 +66,8 @@ func (s *Service) ListNotes(ctx context.Context, limit *int) ([]Note, error) {
 		return nil, fmt.Errorf("list notes: %w", err)
 	}
 	return notes, nil
+}
+
+func invalid(format string, args ...any) error {
+	return ValidationError{Message: fmt.Sprintf(format, args...)}
 }
