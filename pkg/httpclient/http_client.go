@@ -21,9 +21,13 @@ type Client struct {
 // Option configures a Client during New.
 type Option func(*Client)
 
-// WithTimeout sets the underlying http.Client timeout.
+// WithTimeout sets the underlying http.Client timeout; zero or less keeps New's default.
 func WithTimeout(timeout time.Duration) Option {
-	return func(c *Client) { c.http.Timeout = timeout }
+	return func(c *Client) {
+		if timeout > 0 {
+			c.http.Timeout = timeout
+		}
+	}
 }
 
 // WithBaseURL sets the base URL prepended to every request path.

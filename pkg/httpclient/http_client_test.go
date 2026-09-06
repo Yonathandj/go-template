@@ -53,6 +53,17 @@ func TestNewDefaults(t *testing.T) {
 	}
 }
 
+// An unconfigured service has a zero Timeout; letting it through would leave the client
+// with no timeout at all, which is worse than the default it replaces.
+func TestWithTimeoutKeepsTheDefaultForZero(t *testing.T) {
+	for _, timeout := range []time.Duration{0, -time.Second} {
+		client := New(WithTimeout(timeout))
+		if client.http.Timeout != 30*time.Second {
+			t.Errorf("WithTimeout(%v) left timeout = %v, want the 30s default", timeout, client.http.Timeout)
+		}
+	}
+}
+
 func TestOptions(t *testing.T) {
 	custom := &http.Client{Timeout: time.Second}
 	transport := http.DefaultTransport
