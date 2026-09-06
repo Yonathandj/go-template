@@ -11,12 +11,6 @@ import (
 
 var gormOpen = gorm.Open
 
-func pgQuote(v string) string {
-	v = strings.ReplaceAll(v, `\`, `\\`)
-	v = strings.ReplaceAll(v, `'`, `\'`)
-	return "'" + v + "'"
-}
-
 // NewPostgres opens a pooled GORM connection to a PostgreSQL database and pings it.
 func NewPostgres(
 	host string, port int, user string, password string, database string, opts string, pool PoolConfig,
@@ -44,4 +38,10 @@ func NewPostgres(
 
 	log.Printf("connected to PostgreSQL database %q at %s:%d\n", database, host, port)
 	return db, nil
+}
+
+func pgQuote(v string) string {
+	v = strings.ReplaceAll(v, `\`, `\\`)
+	v = strings.ReplaceAll(v, `'`, `\'`)
+	return "'" + v + "'"
 }

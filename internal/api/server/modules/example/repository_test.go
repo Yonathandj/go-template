@@ -2,6 +2,7 @@ package example
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -33,6 +34,8 @@ func expectInsert(mock sqlmock.Sqlmock, id int64) {
 	mock.ExpectBegin()
 	mock.ExpectQuery(`INSERT INTO "example_notes" \("title","body","created_at"\) VALUES \([^)]*\) RETURNING "id"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(id))
+	mock.ExpectQuery(`INSERT INTO "example_note_events"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(id))
 	mock.ExpectCommit()
 }
 
@@ -50,6 +53,24 @@ func TestCreateLetsPostgresGenerateTheID(t *testing.T) {
 	}
 	if note.CreatedAt.IsZero() {
 		t.Error("CreatedAt was not set")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestCreateRollsBackTheNoteWhenTheEventFails(t *testing.T) {
+	repo, mock := mockRepository(t)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(`INSERT INTO "example_notes"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(7)))
+	mock.ExpectQuery(`INSERT INTO "example_note_events"`).WillReturnError(errors.New("audit table is gone"))
+	mock.ExpectRollback()
+
+	note := Note{Title: "a title"}
+	if err := repo.Create(context.Background(), &note); err == nil {
+		t.Fatal("Create returned nil, want the event failure to surface")
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Error(err)

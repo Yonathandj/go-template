@@ -36,7 +36,7 @@ Run `make help` for every target.
 | Route | Shows |
 | --- | --- |
 | `GET /example/visits` | Reaching a client (Redis) from the service layer |
-| `GET`/`POST /example/notes` | Input validation, the full path down to PostgreSQL, and logging with the request ID |
+| `GET`/`POST /example/notes` | Input validation, the full path down to PostgreSQL, a transaction, and logging with the request ID |
 
 It is split into four files, the shape to follow for a module that has dependencies. Layers only ever point downwards:
 
@@ -45,11 +45,13 @@ It is split into four files, the shape to follow for a module that has dependenc
 | `constant.go` | Keys and limits | nothing |
 | `handler.go` | Generated request in, generated response out | the service and the logger |
 | `service.go` | Validation, defaults, the actual behaviour | the repository and any clients |
-| `repository.go` | The stored row and its queries | `*gorm.DB` |
+| `repository.go` | The stored rows and their queries | `*gorm.DB` |
 
 The handler does no validation and holds no client, so the rules are testable without HTTP; the service returns a `ValidationError` for a caller mistake and a wrapped error for anything else, and the handler turns the first into the spec's `400` and lets the second become a `500`. Nothing above `repository.go` sees a `*gorm.DB`.
 
 Take only the layers you need. `modules/health` has no dependencies and no rules, so it is a single `handler.go` — add `service.go` when there is a rule to enforce, `repository.go` when there is a table.
+
+`Repository.Create` writes the note and its audit row through `database.WithTransaction`, so a note can never exist without its event. Reach for that helper whenever two writes have to land together; a single write does not need one, because GORM already wraps it.
 
 A module mounts only when **every** dependency it needs is configured. Remove `redis:` from `config.yaml` and all three routes return 404 rather than failing at startup or panicking on the first request. See `register` in `internal/api/server/router.go`.
 

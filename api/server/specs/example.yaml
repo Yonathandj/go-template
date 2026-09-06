@@ -68,7 +68,7 @@ paths:
       summary: Create an example note
       description: >-
         The write path to copy: the handler only translates the generated request, the service owns
-        the rules and the store, and the handler logs the result with the request ID.
+        the rules, and the repository writes the note and its audit row in one transaction.
       requestBody:
         required: true
         content:

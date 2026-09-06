@@ -93,6 +93,27 @@ func New(cfg Config) (*Logger, error) {
 	}, nil
 }
 
+// Debug logs at DEBUG level; fields become structured keys on the log line.
+func (l *Logger) Debug(msg string, fields map[string]any) { l.zap.Debug(msg, zapFields(fields)...) }
+
+// Info logs at INFO level; fields become structured keys on the log line.
+func (l *Logger) Info(msg string, fields map[string]any) { l.zap.Info(msg, zapFields(fields)...) }
+
+// Warn logs at WARN level; fields become structured keys on the log line.
+func (l *Logger) Warn(msg string, fields map[string]any) { l.zap.Warn(msg, zapFields(fields)...) }
+
+// Error logs at ERROR level; fields become structured keys on the log line.
+func (l *Logger) Error(msg string, fields map[string]any) { l.zap.Error(msg, zapFields(fields)...) }
+
+// Close flushes buffered logs and closes the underlying file.
+func (l *Logger) Close() error {
+	_ = l.zap.Sync()
+	if l.closer != nil {
+		return l.closer.Close()
+	}
+	return nil
+}
+
 func encoderConfig() zapcore.EncoderConfig {
 	return zapcore.EncoderConfig{
 		TimeKey:        "timestamp",
@@ -121,25 +142,4 @@ func zapFields(fields map[string]any) []zap.Field {
 		out = append(out, zap.Any(key, value))
 	}
 	return out
-}
-
-// Debug logs at DEBUG level; fields become structured keys on the log line.
-func (l *Logger) Debug(msg string, fields map[string]any) { l.zap.Debug(msg, zapFields(fields)...) }
-
-// Info logs at INFO level; fields become structured keys on the log line.
-func (l *Logger) Info(msg string, fields map[string]any) { l.zap.Info(msg, zapFields(fields)...) }
-
-// Warn logs at WARN level; fields become structured keys on the log line.
-func (l *Logger) Warn(msg string, fields map[string]any) { l.zap.Warn(msg, zapFields(fields)...) }
-
-// Error logs at ERROR level; fields become structured keys on the log line.
-func (l *Logger) Error(msg string, fields map[string]any) { l.zap.Error(msg, zapFields(fields)...) }
-
-// Close flushes buffered logs and closes the underlying file.
-func (l *Logger) Close() error {
-	_ = l.zap.Sync()
-	if l.closer != nil {
-		return l.closer.Close()
-	}
-	return nil
 }
