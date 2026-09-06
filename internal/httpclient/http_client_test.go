@@ -1,6 +1,9 @@
 package httpclient
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,8 +14,6 @@ import (
 	"github.com/supernurture/go-template/pkg/logger"
 )
 
-// newTestLogger writes to a temp dir and hands back a reader for what was logged,
-// so the HTTPS warning can be asserted rather than just executed.
 func newTestLogger(t *testing.T) (*logger.Logger, func() string) {
 	t.Helper()
 
@@ -32,7 +33,7 @@ func newTestLogger(t *testing.T) (*logger.Logger, func() string) {
 			t.Fatalf("glob %s: %v", dir, err)
 		}
 		if len(files) == 0 {
-			return "" // nothing was logged at all
+			return ""
 		}
 		contents, err := os.ReadFile(files[0])
 		if err != nil {
@@ -64,7 +65,6 @@ func TestNewHTTPClientBuildsEveryUpstream(t *testing.T) {
 	}
 }
 
-// Sending basic-auth over plaintext is the kind of thing that has to be loud.
 func TestWarnsWhenBaseURLIsNotHTTPS(t *testing.T) {
 	tests := map[string]struct {
 		baseURL  string
@@ -74,6 +74,8 @@ func TestWarnsWhenBaseURLIsNotHTTPS(t *testing.T) {
 		"no scheme":    {"api.example.com", true},
 		"tls":          {"https://api.example.com", false},
 		"tls any case": {"HTTPS://api.example.com", false},
+		// Nothing is configured, so there are no credentials to send in cleartext.
+		"unconfigured": {"", false},
 	}
 
 	for name, tc := range tests {
@@ -90,11 +92,52 @@ func TestWarnsWhenBaseURLIsNotHTTPS(t *testing.T) {
 	}
 }
 
-// An unconfigured service must still yield a usable client rather than a nil deref.
 func TestNewHTTPClientWithoutServiceConfig(t *testing.T) {
 	log, _ := newTestLogger(t)
 
 	if clients := NewHTTPClient(&config.Config{}, log); clients.Example == nil {
 		t.Error("Example client was not built from an empty config")
+	}
+}
+
+// An empty Authorization header is worse than none: some upstreams reject the malformed
+// value, and it says the request is authenticated when nothing was configured.
+func TestAuthorizationIsSentOnlyWhenConfigured(t *testing.T) {
+	tests := map[string]struct {
+		auth     config.ServiceAuth
+		wantAuth string
+	}{
+		"no credentials":  {config.ServiceAuth{}, ""},
+		"password only":   {config.ServiceAuth{Password: "password"}, ""},
+		"full credential": {config.ServiceAuth{User: "user", Password: "password"}, "Basic dXNlcjpwYXNzd29yZA=="},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			var got []string
+			server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				got = r.Header["Authorization"]
+			}))
+			defer server.Close()
+
+			log, _ := newTestLogger(t)
+			cfg := testConfig(server.URL)
+			service := cfg.Services["example"]
+			service.Auth = tc.auth
+			cfg.Services["example"] = service
+
+			resp, err := NewHTTPClient(cfg, log).Example.Do(context.Background(), http.MethodGet, "/x", nil)
+			if err != nil {
+				t.Fatalf("Do: %v", err)
+			}
+			_ = resp.Body.Close()
+
+			if tc.wantAuth == "" && len(got) != 0 {
+				t.Errorf("Authorization = %q, want the header absent", got)
+			}
+			if tc.wantAuth != "" && (len(got) != 1 || got[0] != tc.wantAuth) {
+				t.Errorf("Authorization = %q, want %q", got, tc.wantAuth)
+			}
+		})
 	}
 }

@@ -9,8 +9,6 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 )
 
-// ValidationError marks a caller mistake rather than a failure. The handler turns it
-// into the 400 the spec documents; anything else becomes a 500.
 type ValidationError struct {
 	Message string
 }
@@ -21,9 +19,6 @@ func invalid(format string, args ...any) error {
 	return ValidationError{Message: fmt.Sprintf(format, args...)}
 }
 
-// Service holds the module's behaviour: validation, defaults, and the calls to its
-// dependencies. Keeping it out of the handler means none of this is reachable only
-// over HTTP - a worker or CLI can call the same methods.
 type Service struct {
 	redis *goredis.Client
 	notes *Repository
@@ -33,10 +28,7 @@ func NewService(client *goredis.Client, notes *Repository) *Service {
 	return &Service{redis: client, notes: notes}
 }
 
-// CountVisit increments the visit counter and returns its new value.
 func (s *Service) CountVisit(ctx context.Context) (int64, error) {
-	// ctx carries the request deadline set by the timeout middleware, so a stalled Redis
-	// cannot outlive the request. Every dependency call below does the same.
 	visits, err := s.redis.Incr(ctx, visitsKey).Result()
 	if err != nil {
 		return 0, fmt.Errorf("increment %q: %w", visitsKey, err)
@@ -44,13 +36,10 @@ func (s *Service) CountVisit(ctx context.Context) (int64, error) {
 	return visits, nil
 }
 
-// CreateNote validates the input and stores it. Whitespace-only fields count as empty.
 func (s *Service) CreateNote(ctx context.Context, title, body string) (Note, error) {
 	title = strings.TrimSpace(title)
 	body = strings.TrimSpace(body)
 
-	// OpenAPI maxLength counts characters, so len() would cut a title of accented or
-	// non-Latin text short of the limit the spec advertises.
 	switch {
 	case title == "":
 		return Note{}, invalid("title is required")
@@ -67,7 +56,6 @@ func (s *Service) CreateNote(ctx context.Context, title, body string) (Note, err
 	return note, nil
 }
 
-// ListNotes returns the newest notes first. A nil limit takes the default.
 func (s *Service) ListNotes(ctx context.Context, limit *int) ([]Note, error) {
 	size := defaultLimit
 	if limit != nil {

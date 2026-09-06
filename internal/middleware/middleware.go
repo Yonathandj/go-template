@@ -22,17 +22,16 @@ const (
 	requestIDLength = 16
 	maxRequestIDLen = 64
 
-	// defaultMaxBodyBytes caps request bodies when server.max_body_bytes is unset.
 	defaultMaxBodyBytes = 1 << 20
 )
 
-type requestIDCtxKey struct{}
+type reqIDContextKey struct{}
 
 // Default returns the standard chain in execution order; mount with router.Use(Default(cfg, log)...).
 func Default(cfg *config.Config, log *logger.Logger) []gin.HandlerFunc {
-	maxBody := cfg.Server.MaxBodyBytes
-	if maxBody <= 0 {
-		maxBody = defaultMaxBodyBytes
+	var maxBody int64 = defaultMaxBodyBytes
+	if cfg.Server.MaxBodyBytes > 0 {
+		maxBody = cfg.Server.MaxBodyBytes
 	}
 
 	return []gin.HandlerFunc{
@@ -46,15 +45,19 @@ func Default(cfg *config.Config, log *logger.Logger) []gin.HandlerFunc {
 	}
 }
 
-// RequestID reuses a sane inbound X-Request-ID or generates one, and echoes it on the response.
+// RequestID reuses a sane inbound X-Request-ID or generates one, then stores it in the request context and echoes it.
 func RequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		reqID := c.GetHeader(requestIDHeader)
 		if !validRequestID(reqID) {
-			reqID, _ = util.GenerateUniqueID(requestIDLength)
+			uniqueID, err := util.GenerateUniqueID(requestIDLength)
+			if err != nil {
+				uniqueID = fmt.Sprintf("%x", time.Now().UnixNano())
+			}
+			reqID = uniqueID
 		}
 
-		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), requestIDCtxKey{}, reqID))
+		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), reqIDContextKey{}, reqID))
 		c.Header(requestIDHeader, reqID)
 		c.Next()
 	}
@@ -62,7 +65,7 @@ func RequestID() gin.HandlerFunc {
 
 // RequestIDFrom returns the request ID, or "" outside a request. Pass c.Request.Context(), not the *gin.Context.
 func RequestIDFrom(ctx context.Context) string {
-	reqID, _ := ctx.Value(requestIDCtxKey{}).(string)
+	reqID, _ := ctx.Value(reqIDContextKey{}).(string)
 	return reqID
 }
 
@@ -81,9 +84,11 @@ func AccessLog(log *logger.Logger) gin.HandlerFunc {
 			"latency_ms": time.Since(start).Milliseconds(),
 			"client_ip":  c.ClientIP(),
 		}
-		if errs := c.Errors.String(); errs != "" {
-			fields["error"] = errs
+
+		if len(c.Errors) > 0 {
+			fields["errors"] = c.Errors.Errors()
 		}
+
 		switch {
 		case status >= http.StatusInternalServerError:
 			log.Error("request", fields)
@@ -100,9 +105,7 @@ func Recovery(log *logger.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			if err := recover(); err != nil {
-				// ErrAbortHandler is the stdlib's deliberate "drop this connection" signal, not a bug.
-				//nolint:errorlint // recover() yields any, and net/http panics with the sentinel itself; it is never wrapped.
-				if err == http.ErrAbortHandler {
+				if panicErr, ok := err.(error); ok && errors.Is(panicErr, http.ErrAbortHandler) {
 					panic(err)
 				}
 
@@ -123,6 +126,7 @@ func Recovery(log *logger.Logger) gin.HandlerFunc {
 	}
 }
 
+// Timeout gives the handler and every call it makes a deadline, answering 504 on overrun; zero or less disables it.
 func Timeout(timeout time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if timeout <= 0 {
@@ -154,20 +158,21 @@ func SecurityHeaders(hsts bool) gin.HandlerFunc {
 	}
 }
 
-// CORS echoes an allowed Origin and answers preflight; empty disables it, "*" allows any origin without credentials.
+// CORS echoes an allowed Origin and answers preflight; an empty list allows none, "*" allows any without credentials.
 func CORS(allowed []string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		c.Writer.Header().Add("Vary", "Origin")
 		origin := c.GetHeader("Origin")
 		if origin == "" {
 			c.Next()
 			return
 		}
-		// Vary before the allow check, so a shared cache never reuses one origin's response for another.
-		c.Writer.Header().Add("Vary", "Origin")
+
 		if !originAllowed(allowed, origin) {
 			c.Next()
 			return
 		}
+
 		c.Header("Access-Control-Allow-Origin", origin)
 		c.Header("Access-Control-Expose-Headers", requestIDHeader)
 		if !slices.Contains(allowed, "*") {
@@ -175,11 +180,12 @@ func CORS(allowed []string) gin.HandlerFunc {
 		}
 		if c.Request.Method == http.MethodOptions {
 			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			// Echo the requested headers: the browser only asks for ones the page sends, and the origin is allowlisted.
+
 			headers := c.GetHeader("Access-Control-Request-Headers")
 			if headers == "" {
 				headers = "Authorization, Content-Type, " + requestIDHeader
 			}
+
 			c.Header("Access-Control-Allow-Headers", headers)
 			c.Header("Access-Control-Max-Age", "600")
 			c.AbortWithStatus(http.StatusNoContent)

@@ -21,9 +21,11 @@ func NewHTTPClient(cfg *config.Config, log *logger.Logger) *HTTPClient {
 	}
 }
 
+// An unconfigured service has no base URL and no credentials to leak, so it is not warned about.
 func warnIfNotHTTPS(log *logger.Logger, service, baseURL string) {
-	if !strings.HasPrefix(strings.ToLower(baseURL), "https://") {
-		log.Warn(service+" base URL is not HTTPS; basic-auth credentials will be sent in cleartext", map[string]any{"base_url": baseURL})
+	if baseURL != "" && !strings.HasPrefix(strings.ToLower(baseURL), "https://") {
+		log.Warn(service+" base URL is not HTTPS; basic-auth credentials will be sent in cleartext",
+			map[string]any{"base_url": baseURL})
 	}
 }
 
@@ -32,9 +34,14 @@ func newExampleClient(cfg *config.Config, log *logger.Logger) *httpclient.Client
 
 	warnIfNotHTTPS(log, "Example", example.BaseURL)
 
-	return httpclient.New(
-		httpclient.WithHeader("Authorization", util.GenerateBasicAuth(example.Auth.User, example.Auth.Password)),
+	opts := []httpclient.Option{
 		httpclient.WithTimeout(example.Timeout),
 		httpclient.WithBaseURL(example.BaseURL),
-	)
+	}
+	// Setting it unconditionally would send an empty Authorization header on every request.
+	if auth := util.GenerateBasicAuth(example.Auth.User, example.Auth.Password); auth != "" {
+		opts = append(opts, httpclient.WithHeader("Authorization", auth))
+	}
+
+	return httpclient.New(opts...)
 }

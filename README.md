@@ -36,14 +36,14 @@ Run `make help` for every target.
 | Route | Shows |
 | --- | --- |
 | `GET /example/visits` | Reaching a client (Redis) from the service layer |
-| `GET`/`POST /example/notes` | Input validation and the full path down to PostgreSQL |
+| `GET`/`POST /example/notes` | Input validation, the full path down to PostgreSQL, and logging with the request ID |
 
 It is split into four files, the shape to follow for a module that has dependencies. Layers only ever point downwards:
 
 | File | Holds | Knows about |
 | --- | --- | --- |
 | `constant.go` | Keys and limits | nothing |
-| `handler.go` | Generated request in, generated response out | the service |
+| `handler.go` | Generated request in, generated response out | the service and the logger |
 | `service.go` | Validation, defaults, the actual behaviour | the repository and any clients |
 | `repository.go` | The stored row and its queries | `*gorm.DB` |
 
@@ -61,6 +61,7 @@ The `example_notes` table comes from `scripts/schema.sql`, which compose mounts 
 2. `make oapicodegen` — generates `internal/api/server/oapicodegen/<name>/`.
 3. Implement `StrictServerInterface` in `internal/api/server/modules/<name>/`, following the four files above.
 4. Register it in `register()` in `internal/api/server/router.go`, wiring `NewRepository` → `NewService` → `NewHandler`.
+5. If it needs a table, add it to `scripts/schema.sql` and replay with `docker compose down -v && docker compose up -d`.
 
 One spec per module: every route in `<name>.yaml` is registered in a single call, so a module is mounted whole or not at all.
 
@@ -76,7 +77,9 @@ databases.postgres.example.password  ->  DATABASES_POSTGRES_EXAMPLE_PASSWORD
 
 The key must already exist in `config.yaml` — an environment variable for a key that is not in the file is ignored. Keep secrets out of the YAML and set them this way.
 
-Every entry under `databases:` and `redis:` is opened **and pinged** at startup, so a block you are not running yet must be removed or commented out, not left blank. `services:` only builds HTTP clients; an unreachable `base_url` costs nothing until a handler calls it.
+Every entry under `databases:` and `redis:` is opened **and pinged** at startup, so a block you are not running yet must be removed or commented out, not left blank. `services:` only builds HTTP clients; an unreachable `base_url` costs nothing until a handler calls it, though a malformed one is rejected at startup along with a service that declares no endpoints.
+
+`server.timeout` is the deadline a handler and everything it calls gets. The server's write timeout is derived from it, so raising one raises the other; keep every upstream `services.*.timeout` below it, or the request dies before the shorter deadline can fire.
 
 ## Layout
 
@@ -104,6 +107,8 @@ Handlers receive what they need through their constructor — they never see the
 
 Every request passes through `middleware.Default`: request ID, access log, panic recovery, timeout, security headers, CORS, and a body-size limit. `ContextWithFallback` is on, so the `context.Context` a handler receives carries the timeout deadline — pass it to every database, cache, and HTTP call and a stalled dependency cannot outlive the request.
 
+That same context carries the request ID. Read it with `middleware.RequestIDFrom(ctx)` and every line you log lands next to the access-log line for the same request; `modules/example/handler.go` does this after storing a note.
+
 ## Make targets
 
 | Target | |
@@ -124,21 +129,17 @@ Every request passes through `middleware.Default`: request ID, access log, panic
 
 Go 1.26+, Docker for the local dependencies. `make fmt` needs `goimports`; `make lint` needs golangci-lint, which `make lint-install` pins to the version `.golangci.yml` is written for — the config uses the v1 format, which v2 does not read.
 
-Beyond the golangci-lint defaults the config turns on `errorlint` (a `%v` where `%w` was meant silently breaks `errors.Is`), `bodyclose`, `sqlclosecheck`, and `revive`. Generated code under `oapicodegen/` is excluded, since `make oapicodegen` overwrites any fix made there. A `//nolint` must name its linter and give a reason.
+Beyond the golangci-lint defaults the config turns on `errorlint` (a `%v` where `%w` was meant silently breaks `errors.Is`), `bodyclose`, `sqlclosecheck`, `revive`, and `lll` at 120 columns with tabs counted as four. Generated code under `oapicodegen/` is excluded, since `make oapicodegen` overwrites any fix made there. A `//nolint` must name its linter and give a reason.
 
 ## Coverage
 
-`make cover-gaps` prints the current number and everything short of 100%. Only
-`cmd/api` should appear there; if anything else does, it is a genuine gap.
+`make cover-gaps` prints the current number and everything short of 100%. One branch is
+knowingly uncovered: the fallback in `middleware.RequestID` for a failing `crypto/rand`.
+Anything else that appears is a genuine gap.
 
-Four blocks in `cmd/api` are knowingly uncovered, so don't spend an afternoon on them:
-
-- `main` calls `os.Exit`, which no in-process test survives.
-- `NewRouter`'s error branch is unreachable from `run`: config validation enforces
-  `ip|cidr` on `trusted_proxies`, so anything that survives `Load` also satisfies gin.
-  `internal/api/server` covers that branch directly instead.
-- The `Serve` failure, shutdown timeout, and `deps.Close` failure paths in `run` need
-  internals broken from outside the process.
+`cmd/api` reaches its failure paths through the package-level seams in `main.go` — `exit`,
+`listen`, `newRouter`, `closeDeps` — which tests swap to force an error the real process
+cannot be made to produce. `internal/container` uses the same pattern.
 
 `make cover` and `make cover-gaps` exclude generated code under `oapicodegen/` and pass
 `-coverpkg`, so a module reached through the router is credited rather than reported as

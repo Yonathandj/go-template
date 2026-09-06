@@ -12,7 +12,6 @@ import (
 	"github.com/supernurture/go-template/pkg/redis"
 )
 
-// miniredisService wires the service to an in-process Redis.
 func miniredisService(t *testing.T) (*Service, *miniredis.Miniredis) {
 	t.Helper()
 
@@ -36,7 +35,6 @@ func TestValidationErrorMessage(t *testing.T) {
 	}
 }
 
-// The counter has to persist across calls, not restart per request.
 func TestCountVisitIncrements(t *testing.T) {
 	service, _ := miniredisService(t)
 
@@ -53,14 +51,12 @@ func TestCountVisitIncrements(t *testing.T) {
 
 func TestCountVisitReportsRedisFailure(t *testing.T) {
 	service, server := miniredisService(t)
-	server.Close() // the client now has nothing to talk to
+	server.Close()
 
 	if _, err := service.CountVisit(context.Background()); err == nil {
 		t.Fatal("expected the Redis failure to surface")
 	}
 }
-
-// A stored note keeps the trimmed values and the generated id.
 func TestCreateNoteStoresTheNote(t *testing.T) {
 	repo, mock := mockRepository(t)
 	expectInsert(mock, 7)
@@ -101,8 +97,6 @@ func TestListNotesReportsRepositoryFailure(t *testing.T) {
 	}
 }
 
-// Validation runs before any dependency is touched, so nil ones are a real assertion
-// here: anything that calls through to them panics the test.
 func nilService() *Service { return NewService(nil, nil) }
 
 func TestCreateNoteRejectsBadInput(t *testing.T) {
@@ -130,7 +124,6 @@ func TestCreateNoteRejectsBadInput(t *testing.T) {
 		})
 	}
 
-	// A title at the limit in characters is multi-byte over it, so byte-length counting would reject it.
 	t.Run("multi-byte title at the limit is accepted", func(t *testing.T) {
 		repo, mock := mockRepository(t)
 		expectInsert(mock, 1)
@@ -153,7 +146,6 @@ func TestListNotesRejectsLimitOutOfRange(t *testing.T) {
 	}
 }
 
-// A missing limit must not fall through as zero, which would ask the database for nothing.
 func TestListNotesDefaultsTheLimit(t *testing.T) {
 	repo, mock := mockRepository(t)
 	mock.ExpectQuery(`SELECT \* FROM "example_notes" ORDER BY id DESC LIMIT`).

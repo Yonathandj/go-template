@@ -1,7 +1,10 @@
 openapi: 3.0.3
 info:
   title: Example API
-  description: One example module over both dependencies - a Redis counter and notes stored in PostgreSQL.
+  description: >-
+    A worked example to copy when you add your own module. Edit this spec, run `make oapicodegen`,
+    then implement the generated interface under internal/api/server/modules/ and mount it in router.go.
+    Delete this module once yours replaces it.
   version: 1.0.0
 tags:
   - name: example
@@ -12,7 +15,9 @@ paths:
       tags:
         - example
       summary: Get example visits
-      description: Increments a counter in Redis and returns the new value.
+      description: >-
+        The smallest shape to copy: nothing to validate, so the handler only forwards to the service
+        and the service makes the one dependency call.
       responses:
         '200':
           description: The visit counter after this request.
@@ -26,7 +31,9 @@ paths:
       tags:
         - example
       summary: List example notes
-      description: Returns the most recently created notes.
+      description: >-
+        Shows where input rules belong: the service checks limit, not the handler, so a worker or CLI
+        calling the same method gets the same rule.
       parameters:
         - name: limit
           in: query
@@ -47,7 +54,9 @@ paths:
                 items:
                   $ref: '#/components/schemas/Note'
         '400':
-          description: The request was malformed.
+          description: >-
+            A caller mistake. The service returns a ValidationError and the handler maps it here;
+            every other error stays a 500 so internals are never leaked.
           content:
             application/json:
               schema:
@@ -57,7 +66,9 @@ paths:
       tags:
         - example
       summary: Create an example note
-      description: Stores a note and returns it with its generated identifier.
+      description: >-
+        The write path to copy: the handler only translates the generated request, the service owns
+        the rules and the store, and the handler logs the result with the request ID.
       requestBody:
         required: true
         content:
@@ -72,7 +83,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/Note'
         '400':
-          description: The request was malformed.
+          description: >-
+            A caller mistake. The service returns a ValidationError and the handler maps it here;
+            every other error stays a 500 so internals are never leaked.
           content:
             application/json:
               schema:

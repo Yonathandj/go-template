@@ -19,17 +19,16 @@ func TestOptions(t *testing.T) {
 	if opts.DB != 4 {
 		t.Errorf("DB = %d, want 4", opts.DB)
 	}
-	// Adjacent string parameters: a swap here would authenticate with the wrong pair and still compile.
 	if opts.Username != "user" || opts.Password != "password" {
 		t.Errorf("credentials = %q/%q, want user/password", opts.Username, opts.Password)
 	}
-	if opts.PoolSize != pool.PoolSize || opts.MinIdleConns != pool.MinIdleConns || opts.ConnMaxLifetime != pool.ConnMaxLifetime {
+	if opts.PoolSize != pool.PoolSize || opts.MinIdleConns != pool.MinIdleConns ||
+		opts.ConnMaxLifetime != pool.ConnMaxLifetime {
 		t.Errorf("pool settings not carried over: %+v", opts)
 	}
 	if opts.TLSConfig == nil {
 		t.Fatal("TLSConfig is nil, the connection would be cleartext")
 	}
-	// Without ServerName the certificate is never checked against the host we dialled.
 	if got := opts.TLSConfig.ServerName; got != "cache.example.com" {
 		t.Errorf("TLSConfig.ServerName = %q, want the host", got)
 	}
@@ -63,7 +62,6 @@ func TestNew(t *testing.T) {
 }
 
 func TestNewUnreachable(t *testing.T) {
-	// Port 2 is reserved and never served, so the ping fails on connect.
 	if _, err := New("127.0.0.1", 2, "", "", 0, false, PoolConfig{}); err == nil {
 		t.Fatal("expected connection error")
 	}

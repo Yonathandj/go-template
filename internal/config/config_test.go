@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,7 +11,6 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// validConfig is the smallest config that passes validation: every optional block omitted.
 const validConfig = `
 app:
   name: template
@@ -25,7 +25,11 @@ logger:
   level: INFO
 `
 
-// chdirTemp runs the test from an empty directory, so Load only ever sees files it writes.
+func service(baseURL, endpoints string) string {
+	return fmt.Sprintf("services:\n  upstream:\n    base_url: %s\n    endpoints:\n      %s\n    timeout: 10s\n",
+		baseURL, endpoints)
+}
+
 func chdirTemp(t *testing.T) {
 	t.Helper()
 	t.Chdir(t.TempDir())
@@ -44,12 +48,10 @@ func writeFile(t *testing.T, name, contents string) {
 	}
 }
 
-// configFile is the path Load reads, built from the same constants Load uses.
 func configFile() string {
 	return filepath.Join(configPath, configName+"."+configType)
 }
 
-// repoFile reads a file from the repository root, before chdirTemp moves us away.
 func repoFile(t *testing.T, name string) string {
 	t.Helper()
 	contents, err := os.ReadFile(filepath.Join("..", "..", name))
@@ -59,13 +61,10 @@ func repoFile(t *testing.T, name string) string {
 	return string(contents)
 }
 
-// The README quickstart is two copies and a run, so the shipped examples have to
-// load unedited — including the inline comments in .env.example.
 func TestQuickstartExamplesLoad(t *testing.T) {
 	exampleConfig := repoFile(t, filepath.Join(configPath, configName+".example."+configType))
 	exampleEnv := repoFile(t, dotEnvPath+".example")
 
-	// godotenv exports into the process, so undo it rather than leak into later tests.
 	vars, err := godotenv.Unmarshal(exampleEnv)
 	if err != nil {
 		t.Fatalf("parse .env.example: %v", err)
@@ -85,13 +84,10 @@ func TestQuickstartExamplesLoad(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	// The example must configure exactly what compose.yaml brings up: anything else
-	// is opened and pinged at startup and would fail the first run.
 	if len(cfg.Databases.Postgres) != 1 || len(cfg.Redis) != 1 || len(cfg.Databases.SQLServer) != 0 {
 		t.Errorf("postgres = %v, redis = %v, sql_server = %v; want one postgres, one redis, no sql server",
 			cfg.Databases.Postgres, cfg.Redis, cfg.Databases.SQLServer)
 	}
-	// A trailing comment left in the value would slip past validation for a free-form field.
 	if got := cfg.Databases.Postgres["example"].User; got != "postgres" {
 		t.Errorf("postgres user = %q, want %q from .env.example", got, "postgres")
 	}
@@ -115,13 +111,11 @@ func TestLoad(t *testing.T) {
 	if got := cfg.Server.TrustedProxies; len(got) != 1 || got[0] != "10.0.0.0/8" {
 		t.Errorf("server.trusted_proxies = %v, want [10.0.0.0/8]", got)
 	}
-	// Services and Databases are optional; omitting them must not fail validation.
 	if len(cfg.Services) != 0 || len(cfg.Databases.Postgres) != 0 {
 		t.Errorf("services = %v, postgres = %v, want both empty", cfg.Services, cfg.Databases.Postgres)
 	}
 }
 
-// Pool sizing now lives on each datastore, and a mistyped mapstructure tag would silently leave it zero.
 const datastoreConfig = validConfig + `
 databases:
   postgres:
@@ -214,6 +208,21 @@ func TestLoadErrors(t *testing.T) {
 			name:  "fails validation",
 			files: map[string]string{configFile(): "app:\n  name: template\n"},
 			want:  "invalid config",
+		},
+		{
+			name:  "service base_url is not a url",
+			files: map[string]string{configFile(): validConfig + service("api.example.com", "inquiry: /v1/inquiry")},
+			want:  "BaseURL",
+		},
+		{
+			name:  "service has no endpoints",
+			files: map[string]string{configFile(): validConfig + service("https://api.example.com", "{}")},
+			want:  "Endpoints",
+		},
+		{
+			name:  "service endpoint has an empty path",
+			files: map[string]string{configFile(): validConfig + service("https://api.example.com", `inquiry: ""`)},
+			want:  "Endpoints[inquiry]",
 		},
 	}
 

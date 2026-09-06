@@ -1,9 +1,7 @@
-# Local dependencies for development. The app itself runs on the host via
-# `make run`; see `make docker-run` for the containerised build.
+# Local dependencies only; the app itself runs on the host via `make run`.
 services:
   postgres:
-    # Pinned to 17: the 18 image moved PGDATA out of /var/lib/postgresql/data, so the
-    # volume below would silently stop persisting. Check that path before bumping.
+    # Pinned to 17: the 18 image moved PGDATA, so the volume below would silently stop persisting.
     image: postgres:17-alpine
     environment:
       POSTGRES_USER: postgres
@@ -25,8 +23,7 @@ services:
     image: redis:8-alpine
     ports:
       - "6379:6379"
-    # No volume: the image runs redis-server with no save directives, so nothing is
-    # persisted anyway. The example counter restarting from zero is fine.
+    # No volume on purpose: the image saves nothing, and the example counter may restart at zero.
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
