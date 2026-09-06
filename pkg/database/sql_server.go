@@ -5,16 +5,24 @@ import (
 	"log"
 	"net/url"
 
-	"github.com/supernurture/go-template/pkg/util"
-
 	"gorm.io/driver/sqlserver"
 	"gorm.io/gorm"
 )
 
+// Built through url.URL so the credentials get userinfo escaping, not query escaping:
+// QueryEscape turns a space into "+", which a driver reads back as a literal plus.
+// opts is appended raw, since it arrives already encoded from the config file.
 func sqlServerDSN(host string, port int, user string, password string, database string, opts string) string {
-	return fmt.Sprintf("sqlserver://%s:%s@%s:%d?database=%s%s",
-		user, url.QueryEscape(password), host, port, database,
-		util.Ternary(opts != "", fmt.Sprintf("&%s", opts), ""))
+	dsn := url.URL{
+		Scheme:   "sqlserver",
+		User:     url.UserPassword(user, password),
+		Host:     fmt.Sprintf("%s:%d", host, port),
+		RawQuery: url.Values{"database": {database}}.Encode(),
+	}
+	if opts != "" {
+		dsn.RawQuery += "&" + opts
+	}
+	return dsn.String()
 }
 
 // NewSQLServer opens a pooled GORM connection to a SQL Server database and pings it.

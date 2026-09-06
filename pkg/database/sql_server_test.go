@@ -2,6 +2,7 @@ package database
 
 import (
 	"errors"
+	"net/url"
 	"testing"
 
 	"gorm.io/gorm"
@@ -20,11 +21,23 @@ func TestSQLServerDSN(t *testing.T) {
 	}
 }
 
-func TestSQLServerDSNEscapesPassword(t *testing.T) {
-	got := sqlServerDSN("localhost", 2222, "user", "p@ss:w/rd?&", "go", "")
-	want := "sqlserver://user:p%40ss%3Aw%2Frd%3F%26@localhost:2222?database=go"
-	if got != want {
-		t.Errorf("sqlServerDSN = %q, want %q", got, want)
+// Assert what has to hold, not how url encodes it: a space escaped the query way comes
+// back as "+", and a domain-qualified user is ordinary for SQL Server.
+func TestSQLServerDSNRoundTripsCredentials(t *testing.T) {
+	const user, password, database = `admin@corp.com`, "p@ss w/rd?&:", "my db"
+
+	dsn := sqlServerDSN("localhost", 2222, user, password, database, "")
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatalf("url.Parse(%q): %v", dsn, err)
+	}
+
+	gotPassword, _ := parsed.User.Password()
+	if parsed.User.Username() != user || gotPassword != password {
+		t.Errorf("credentials = %q / %q, want %q / %q", parsed.User.Username(), gotPassword, user, password)
+	}
+	if got := parsed.Query().Get("database"); got != database {
+		t.Errorf("database = %q, want %q", got, database)
 	}
 }
 
