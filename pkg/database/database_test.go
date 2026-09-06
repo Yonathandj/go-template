@@ -51,7 +51,8 @@ func TestHasTLS(t *testing.T) {
 func TestConfigurePool(t *testing.T) {
 	db, _ := mockDB(t)
 
-	if err := configurePool(db, PoolConfig{MaxOpenConns: 5, MaxIdleConns: 5, ConnMaxLifetime: time.Minute}); err != nil {
+	pool := PoolConfig{MaxOpenConns: 5, MaxIdleConns: 5, ConnMaxLifetime: time.Minute}
+	if err := configurePool(db, pool); err != nil {
 		t.Fatalf("configurePool: %v", err)
 	}
 	sqlDB, _ := db.DB()

@@ -13,9 +13,12 @@ import (
 const pingTimeout = 5 * time.Second
 
 // New opens a pooled Redis client and pings it.
-func New(host string, port int, user string, password string, db int, useTLS bool, pool PoolConfig) (*goredis.Client, error) {
+func New(
+	host string, port int, user string, password string, db int, useTLS bool, pool PoolConfig,
+) (*goredis.Client, error) {
 	if !useTLS {
-		log.Printf("warning: Redis connection to %s:%d is not encrypted; credentials and cached data cross the network in cleartext\n", host, port)
+		log.Printf("warning: Redis connection to %s:%d is not encrypted; "+
+			"credentials and cached data cross the network in cleartext\n", host, port)
 	}
 	client := goredis.NewClient(opts(host, port, user, password, db, useTLS, pool))
 

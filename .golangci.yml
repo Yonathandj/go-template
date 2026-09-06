@@ -1,4 +1,3 @@
-# Pinned so `make lint` means the same thing on every machine and in CI.
 # Written for golangci-lint v1.x; v2 needs `version: "2"` and a reshaped file.
 
 run:
@@ -7,12 +6,13 @@ run:
 linters:
   enable:
     # Defaults (errcheck, govet, ineffassign, staticcheck, unused) stay on.
-    - bodyclose # an unclosed response body leaks a connection
-    - errorlint # %v instead of %w silently breaks errors.Is/As
+    - bodyclose
     - copyloopvar
+    - errorlint
+    - lll
     - misspell
-    - nolintlint # a //nolint must say which linter and why
-    - revive # exported symbols need doc comments
+    - nolintlint
+    - revive
     - sqlclosecheck
     - unconvert
     - usestdlibvars
@@ -26,30 +26,34 @@ linters-settings:
       - name: error-strings
       - name: context-as-argument
       - name: indent-error-flow
+  lll:
+    line-length: 120
+    tab-width: 4
   nolintlint:
     require-explanation: true
     require-specific: true
 
 issues:
+  # 0 means no cap: a finding golangci-lint hides is a finding nobody fixes.
+  max-issues-per-linter: 0
+  max-same-issues: 0
   exclude-rules:
-    # Generated contracts are rewritten by `make oapicodegen`; fixes there do not survive.
+    # Rewritten by `make oapicodegen`, so fixes here do not survive.
     - path: internal/api/server/oapicodegen/
       linters:
         - revive
         - misspell
+        - lll
     # Error-path tests discard a nil response, which bodyclose cannot see is safe.
     - path: _test\.go
       linters:
         - bodyclose
-    # Doc comments are required in pkg/, which is meant to be lifted into other
-    # services. Inside internal/ they would just restate the constructor's name.
-    # revive's other rules still apply here; only the `exported` one is dropped.
+    # Doc comments earn their keep in pkg/, meant to be lifted into other services; not in internal/.
     - path: internal/
       text: "^exported:"
       linters:
         - revive
-  # golangci-lint v1 excludes revive's doc-comment findings by default, which would
-  # make the `exported` rule above a silent no-op. Put them back.
+  # v1 drops revive's doc-comment findings by default, which would make the rule above a no-op.
   include:
     - EXC0012
     - EXC0013

@@ -23,7 +23,8 @@ func NewHTTPClient(cfg *config.Config, log *logger.Logger) *HTTPClient {
 
 func warnIfNotHTTPS(log *logger.Logger, service, baseURL string) {
 	if !strings.HasPrefix(strings.ToLower(baseURL), "https://") {
-		log.Warn(service+" base URL is not HTTPS; basic-auth credentials will be sent in cleartext", map[string]any{"base_url": baseURL})
+		log.Warn(service+" base URL is not HTTPS; basic-auth credentials will be sent in cleartext",
+			map[string]any{"base_url": baseURL})
 	}
 }
 

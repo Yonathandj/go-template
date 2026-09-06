@@ -18,9 +18,12 @@ func pgQuote(v string) string {
 }
 
 // NewPostgres opens a pooled GORM connection to a PostgreSQL database and pings it.
-func NewPostgres(host string, port int, user string, password string, database string, opts string, pool PoolConfig) (*gorm.DB, error) {
+func NewPostgres(
+	host string, port int, user string, password string, database string, opts string, pool PoolConfig,
+) (*gorm.DB, error) {
 	if !hasTLS(opts, "sslmode=require", "sslmode=verify") {
-		log.Printf("warning: PostgreSQL connection to %s:%d is not encrypted; credentials and query data cross the network in cleartext (opts=%q)\n", host, port, opts)
+		log.Printf("warning: PostgreSQL connection to %s:%d is not encrypted; "+
+			"credentials and query data cross the network in cleartext (opts=%q)\n", host, port, opts)
 	}
 
 	db, err := gormOpen(postgres.Open(

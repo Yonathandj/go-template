@@ -42,7 +42,6 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 		shutdowns: []func() error{log.Close},
 	}
 
-	// Close what already opened when a later one fails.
 	if err := deps.open(cfg); err != nil {
 		_ = deps.Close()
 		return nil, err
@@ -51,8 +50,16 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 	return deps, nil
 }
 
-// Swapped in tests so the success paths below can run without a live server,
-// mirroring the gormOpen seam in pkg/database.
+// Close unwinds every hook in reverse, continuing past failures.
+func (c *Container) Close() error {
+	var errs []error
+	for x := len(c.shutdowns) - 1; x >= 0; x-- {
+		errs = append(errs, c.shutdowns[x]())
+	}
+
+	return errors.Join(errs...)
+}
+
 var (
 	newPostgres  = database.NewPostgres
 	newSQLServer = database.NewSQLServer
@@ -87,11 +94,13 @@ func (c *Container) open(cfg *config.Config) error {
 	}
 
 	for name, cache := range cfg.Redis {
-		client, err := newRedis(cache.Host, cache.Port, cache.User, cache.Password, cache.DB, cache.TLS, redis.PoolConfig{
-			PoolSize:        cache.PoolSize,
-			MinIdleConns:    cache.MinIdleConns,
-			ConnMaxLifetime: cache.ConnMaxLifetime,
-		})
+		client, err := newRedis(
+			cache.Host, cache.Port, cache.User, cache.Password, cache.DB, cache.TLS,
+			redis.PoolConfig{
+				PoolSize:        cache.PoolSize,
+				MinIdleConns:    cache.MinIdleConns,
+				ConnMaxLifetime: cache.ConnMaxLifetime,
+			})
 		if err != nil {
 			return fmt.Errorf("open redis %q: %w", name, err)
 		}
@@ -100,16 +109,6 @@ func (c *Container) open(cfg *config.Config) error {
 	}
 
 	return nil
-}
-
-// Close unwinds every hook in reverse, continuing past failures.
-func (c *Container) Close() error {
-	var errs []error
-	for i := len(c.shutdowns) - 1; i >= 0; i-- {
-		errs = append(errs, c.shutdowns[i]())
-	}
-
-	return errors.Join(errs...)
 }
 
 func newLogger(cfg *config.Config) (*logger.Logger, error) {
@@ -132,7 +131,6 @@ func newLogger(cfg *config.Config) (*logger.Logger, error) {
 	return log, nil
 }
 
-// closeGorm closes the *sql.DB pool underneath a GORM connection.
 func closeGorm(conn *gorm.DB) func() error {
 	return func() error {
 		sqlDB, err := conn.DB()
