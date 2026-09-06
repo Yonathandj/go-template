@@ -36,14 +36,14 @@ Run `make help` for every target.
 | Route | Shows |
 | --- | --- |
 | `GET /example/visits` | Reaching a client (Redis) from the service layer |
-| `GET`/`POST /example/notes` | Input validation and the full path down to PostgreSQL |
+| `GET`/`POST /example/notes` | Input validation, the full path down to PostgreSQL, and logging with the request ID |
 
 It is split into four files, the shape to follow for a module that has dependencies. Layers only ever point downwards:
 
 | File | Holds | Knows about |
 | --- | --- | --- |
 | `constant.go` | Keys and limits | nothing |
-| `handler.go` | Generated request in, generated response out | the service |
+| `handler.go` | Generated request in, generated response out | the service and the logger |
 | `service.go` | Validation, defaults, the actual behaviour | the repository and any clients |
 | `repository.go` | The stored row and its queries | `*gorm.DB` |
 
@@ -77,7 +77,9 @@ databases.postgres.example.password  ->  DATABASES_POSTGRES_EXAMPLE_PASSWORD
 
 The key must already exist in `config.yaml` — an environment variable for a key that is not in the file is ignored. Keep secrets out of the YAML and set them this way.
 
-Every entry under `databases:` and `redis:` is opened **and pinged** at startup, so a block you are not running yet must be removed or commented out, not left blank. `services:` only builds HTTP clients; an unreachable `base_url` costs nothing until a handler calls it.
+Every entry under `databases:` and `redis:` is opened **and pinged** at startup, so a block you are not running yet must be removed or commented out, not left blank. `services:` only builds HTTP clients; an unreachable `base_url` costs nothing until a handler calls it, though a malformed one is rejected at startup along with a service that declares no endpoints.
+
+`server.timeout` is the deadline a handler and everything it calls gets. The server's write timeout is derived from it, so raising one raises the other; keep every upstream `services.*.timeout` below it, or the request dies before the shorter deadline can fire.
 
 ## Layout
 
@@ -104,6 +106,8 @@ Handlers receive what they need through their constructor — they never see the
 ## Requests
 
 Every request passes through `middleware.Default`: request ID, access log, panic recovery, timeout, security headers, CORS, and a body-size limit. `ContextWithFallback` is on, so the `context.Context` a handler receives carries the timeout deadline — pass it to every database, cache, and HTTP call and a stalled dependency cannot outlive the request.
+
+That same context carries the request ID. Read it with `middleware.RequestIDFrom(ctx)` and every line you log lands next to the access-log line for the same request; `modules/example/handler.go` does this after storing a note.
 
 ## Make targets
 
