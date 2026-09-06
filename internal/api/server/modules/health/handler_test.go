@@ -7,7 +7,6 @@ import (
 	healthcontract "github.com/supernurture/go-template/internal/api/server/oapicodegen/health"
 )
 
-// The probe's whole contract is the literal body a load balancer matches on.
 func TestGetHealth(t *testing.T) {
 	response, err := NewHandler().GetHealth(context.Background(), healthcontract.GetHealthRequestObject{})
 	if err != nil {

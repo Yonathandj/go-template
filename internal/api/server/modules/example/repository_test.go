@@ -29,9 +29,6 @@ func mockRepository(t *testing.T) (*Repository, sqlmock.Sqlmock) {
 	return NewRepository(db), mock
 }
 
-// expectInsert queues the statement Create issues, returning the given generated id.
-// scripts/schema.sql declares id as GENERATED ALWAYS AS IDENTITY, which rejects an
-// explicit value, so the pattern pins the insert to the three writable columns.
 func expectInsert(mock sqlmock.Sqlmock, id int64) {
 	mock.ExpectBegin()
 	mock.ExpectQuery(`INSERT INTO "example_notes" \("title","body","created_at"\) VALUES \([^)]*\) RETURNING "id"`).

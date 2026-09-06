@@ -28,7 +28,6 @@ func testConfig() *config.Config {
 	return cfg
 }
 
-// newTestDeps builds the smallest container a router needs: only the logger the middleware chain uses.
 func newTestDeps(t *testing.T) *container.Container {
 	t.Helper()
 	log, err := logger.New(logger.Config{ServiceName: "test", Path: t.TempDir()})
@@ -57,8 +56,6 @@ func withRedis(t *testing.T, deps *container.Container) *container.Container {
 	return deps
 }
 
-// The module only builds a repository at registration, so a mock connection is enough
-// to mount it; queries are asserted per test.
 func withPostgres(t *testing.T, deps *container.Container) (*container.Container, sqlmock.Sqlmock) {
 	t.Helper()
 	sqlDB, mock, err := sqlmock.New()
@@ -109,7 +106,6 @@ func TestNewRouterServesHealth(t *testing.T) {
 	}
 }
 
-// The example module reaches both of its dependencies, proving the container-to-handler wiring.
 func TestNewRouterServesExample(t *testing.T) {
 	deps, mock := withPostgres(t, withRedis(t, newTestDeps(t)))
 	router := newTestRouter(t, testConfig(), deps)
@@ -145,8 +141,6 @@ func TestNewRouterServesExample(t *testing.T) {
 	})
 }
 
-// A module needs every one of its dependencies, so a partial setup mounts nothing
-// rather than serving a route that would panic on the first request.
 func TestNewRouterSkipsExampleWithoutEveryDependency(t *testing.T) {
 	paths := []string{"/example/visits", "/example/notes"}
 

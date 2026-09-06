@@ -17,7 +17,6 @@ import (
 	"github.com/supernurture/go-template/pkg/redis"
 )
 
-// stubOpeners replaces every dependency opener with one that succeeds without a server.
 func stubOpeners(t *testing.T) {
 	t.Helper()
 
@@ -26,7 +25,7 @@ func stubOpeners(t *testing.T) {
 		if err != nil {
 			return nil, err
 		}
-		mock.ExpectClose() // Close unwinds every hook, so the pool is closed too
+		mock.ExpectClose()
 		return gorm.Open(
 			postgres.New(postgres.Config{Conn: sqlDB, PreferSimpleProtocol: true}),
 			&gorm.Config{DisableAutomaticPing: true},
@@ -49,7 +48,6 @@ func testConfig(t *testing.T) *config.Config {
 	return cfg
 }
 
-// Nothing configured is a valid setup: the template has to start without a database or cache.
 func TestNewContainerWithoutDependencies(t *testing.T) {
 	c, err := NewContainer(testConfig(t))
 	if err != nil {
@@ -76,17 +74,14 @@ func TestCloseUnwindsInReverse(t *testing.T) {
 
 	err := c.Close()
 
-	// Reverse order keeps the logger alive until every hook that might log has finished.
 	if got, want := strings.Join(order, ","), "redis,postgres,logger"; got != want {
 		t.Errorf("shutdown order = %q, want %q", got, want)
 	}
-	// A failing hook must not stop the ones after it.
 	if err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Errorf("Close error = %v, want it to carry the hook failure", err)
 	}
 }
 
-// Every configured dependency ends up in its map with a shutdown hook behind it.
 func TestNewContainerOpensEveryDependency(t *testing.T) {
 	stubOpeners(t)
 
@@ -103,7 +98,6 @@ func TestNewContainerOpensEveryDependency(t *testing.T) {
 	if c.Postgres["primary"] == nil || c.SQLServer["legacy"] == nil || c.Redis["cache"] == nil {
 		t.Errorf("not every dependency was stored: %+v", c)
 	}
-	// One hook per dependency, plus the logger's.
 	if len(c.shutdowns) != 4 {
 		t.Errorf("shutdown hooks = %d, want 4", len(c.shutdowns))
 	}
@@ -112,11 +106,12 @@ func TestNewContainerOpensEveryDependency(t *testing.T) {
 	}
 }
 
-// Each opener must name which dependency failed, so a bad host is traceable.
 func TestNewContainerNamesTheFailingDependency(t *testing.T) {
 	tests := map[string]func(cfg *config.Config){
 		`postgres "primary"`: func(cfg *config.Config) {
-			cfg.Databases.Postgres = map[string]config.Postgres{"primary": {Host: "127.0.0.1", Port: 2, Opts: "connect_timeout=1"}}
+			cfg.Databases.Postgres = map[string]config.Postgres{
+				"primary": {Host: "127.0.0.1", Port: 2, Opts: "connect_timeout=1"},
+			}
 		},
 		`sql server "legacy"`: func(cfg *config.Config) {
 			cfg.Databases.SQLServer = map[string]config.SQLServer{"legacy": {Host: "127.0.0.1", Port: 2}}
@@ -139,10 +134,8 @@ func TestNewContainerNamesTheFailingDependency(t *testing.T) {
 	}
 }
 
-// A logger that cannot be built must stop startup before anything else is opened.
 func TestNewContainerReportsLoggerFailure(t *testing.T) {
 	cfg := testConfig(t)
-	// Put a file where the logger wants its directory.
 	blocked := filepath.Join(cfg.Logger.Path, cfg.App.Name)
 	if err := os.WriteFile(blocked, []byte("not a directory"), 0o600); err != nil {
 		t.Fatalf("write %s: %v", blocked, err)
@@ -171,7 +164,6 @@ func TestCloseGorm(t *testing.T) {
 		t.Errorf("closeGorm: %v", err)
 	}
 
-	// A connection with no pool underneath must report the failure, not panic.
 	if err := closeGorm(&gorm.DB{Config: &gorm.Config{}})(); err == nil {
 		t.Error("expected an error from a connection with no pool")
 	}

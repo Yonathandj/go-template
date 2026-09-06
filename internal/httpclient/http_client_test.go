@@ -11,8 +11,6 @@ import (
 	"github.com/supernurture/go-template/pkg/logger"
 )
 
-// newTestLogger writes to a temp dir and hands back a reader for what was logged,
-// so the HTTPS warning can be asserted rather than just executed.
 func newTestLogger(t *testing.T) (*logger.Logger, func() string) {
 	t.Helper()
 
@@ -32,7 +30,7 @@ func newTestLogger(t *testing.T) (*logger.Logger, func() string) {
 			t.Fatalf("glob %s: %v", dir, err)
 		}
 		if len(files) == 0 {
-			return "" // nothing was logged at all
+			return ""
 		}
 		contents, err := os.ReadFile(files[0])
 		if err != nil {
@@ -64,7 +62,6 @@ func TestNewHTTPClientBuildsEveryUpstream(t *testing.T) {
 	}
 }
 
-// Sending basic-auth over plaintext is the kind of thing that has to be loud.
 func TestWarnsWhenBaseURLIsNotHTTPS(t *testing.T) {
 	tests := map[string]struct {
 		baseURL  string
@@ -90,7 +87,6 @@ func TestWarnsWhenBaseURLIsNotHTTPS(t *testing.T) {
 	}
 }
 
-// An unconfigured service must still yield a usable client rather than a nil deref.
 func TestNewHTTPClientWithoutServiceConfig(t *testing.T) {
 	log, _ := newTestLogger(t)
 
