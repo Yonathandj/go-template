@@ -14,7 +14,7 @@ import (
 	"github.com/supernurture/go-template/internal/middleware"
 )
 
-// NewRouter builds the gin engine: mode, trusted proxies, the default middleware chain, and every module's generated routes.
+// NewRouter builds the gin engine: mode, trusted proxies, the middleware chain, and every module's generated routes.
 func NewRouter(cfg *config.Config, deps *container.Container) (*gin.Engine, error) {
 	gin.SetMode(cfg.Server.Mode)
 
@@ -22,7 +22,8 @@ func NewRouter(cfg *config.Config, deps *container.Container) (*gin.Engine, erro
 	if err := router.SetTrustedProxies(cfg.Server.TrustedProxies); err != nil {
 		return nil, fmt.Errorf("set trusted proxies: %w", err)
 	}
-	// Without this, the *gin.Context handed to a handler carries no deadline and the timeout middleware never reaches downstream calls.
+
+	// Without this, a handler's *gin.Context carries no deadline and the timeout never reaches downstream calls.
 	router.ContextWithFallback = true
 	router.Use(middleware.Default(cfg, deps.Logger)...)
 
@@ -31,12 +32,13 @@ func NewRouter(cfg *config.Config, deps *container.Container) (*gin.Engine, erro
 }
 
 func register(router gin.IRouter, deps *container.Container) {
-	healthcontract.RegisterHandlers(router, healthcontract.NewStrictHandler(health.NewHandler(), nil))
+	healthcontract.RegisterHandlers(
+		router, healthcontract.NewStrictHandler(health.NewHandler(), nil))
 
-	// A module is mounted only when every dependency it needs is configured, so an
-	// unconfigured one means a 404 rather than a nil panic on the first request.
 	if client, db := deps.Redis["example"], deps.Postgres["example"]; client != nil && db != nil {
 		service := example.NewService(client, example.NewRepository(db))
-		examplecontract.RegisterHandlers(router, examplecontract.NewStrictHandler(example.NewHandler(service), nil))
+		handler := example.NewHandler(service, deps.Logger)
+		examplecontract.RegisterHandlers(
+			router, examplecontract.NewStrictHandler(handler, nil))
 	}
 }
