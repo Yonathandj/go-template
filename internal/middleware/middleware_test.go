@@ -16,7 +16,6 @@ import (
 	"github.com/supernurture/go-template/pkg/logger"
 )
 
-// newRouter mounts the default chain on a router with one echo route and one panicking route.
 func newRouter(t *testing.T, cfg *config.Config) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -38,13 +37,13 @@ func newRouter(t *testing.T, cfg *config.Config) *gin.Engine {
 		c.String(http.StatusOK, "%s|%s", RequestIDFrom(c.Request.Context()), body)
 	})
 	router.GET("/boom", func(*gin.Context) { panic("boom") })
-	router.GET("/half", func(c *gin.Context) { // panics mid-response, after the first byte
+	router.GET("/half", func(c *gin.Context) {
 		c.String(http.StatusOK, "half")
 		c.Writer.Flush()
 		panic("boom")
 	})
 	router.GET("/abort", func(*gin.Context) { panic(http.ErrAbortHandler) })
-	router.GET("/slow", func(c *gin.Context) { <-c.Request.Context().Done() }) // waits on ctx, writes notheyng
+	router.GET("/slow", func(c *gin.Context) { <-c.Request.Context().Done() })
 
 	return router
 }
@@ -104,7 +103,6 @@ func TestDefaultChain(t *testing.T) {
 	})
 
 	t.Run("request reqID reaches the middleware chain, not just the handler", func(t *testing.T) {
-		// Reading it off the *gin.Context silently yields "" unless engine.ContextWithFallback is set.
 		router := gin.New()
 		router.Use(RequestID())
 		var got string
@@ -125,8 +123,8 @@ func TestDefaultChain(t *testing.T) {
 
 	t.Run("lets ErrAbortHandler through instead of logging it as a 500", func(t *testing.T) {
 		defer func() {
-			//nolint:errorlint // the middleware re-panics with the sentinel itself, so identity is what we want to assert.
-			if got := recover(); got != http.ErrAbortHandler {
+			got := recover()
+			if panicErr, ok := got.(error); !ok || !errors.Is(panicErr, http.ErrAbortHandler) {
 				t.Errorf("recovered %v, want ErrAbortHandler to propagate", got)
 			}
 		}()
@@ -173,6 +171,18 @@ func TestDefaultChain(t *testing.T) {
 		}
 		if got := recorder.Header().Get("Strict-Transport-Security"); got != "" {
 			t.Errorf("HSTS = %q, want none in development", got)
+		}
+	})
+
+	t.Run("varies on origin whether or not one was sent", func(t *testing.T) {
+		for _, origin := range []string{"", "https://app.example.com", "https://evil.example.com"} {
+			req := httptest.NewRequest(http.MethodGet, "/echo", nil)
+			if origin != "" {
+				req.Header.Set("Origin", origin)
+			}
+			if got := do(router, req).Header().Get("Vary"); got != "Origin" {
+				t.Errorf("Vary = %q for origin %q, want %q", got, origin, "Origin")
+			}
 		}
 	})
 
@@ -240,13 +250,13 @@ func TestDefaultChain(t *testing.T) {
 
 	t.Run("caps the request body", func(t *testing.T) {
 		body := strings.NewReader(strings.Repeat("x", int(cfg.Server.MaxBodyBytes)+1))
-		if recorder := do(router, httptest.NewRequest(http.MethodPost, "/echo", body)); recorder.Code != http.StatusRequestEntityTooLarge {
+		recorder := do(router, httptest.NewRequest(http.MethodPost, "/echo", body))
+		if recorder.Code != http.StatusRequestEntityTooLarge {
 			t.Errorf("status = %d, want 413", recorder.Code)
 		}
 	})
 }
 
-// TestDefaultChainUnset covers the other side of every knob: production env, no timeout, no body cap.
 func TestDefaultChainUnset(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.App.Env = "production"
@@ -268,7 +278,8 @@ func TestDefaultChainUnset(t *testing.T) {
 
 	t.Run("falls back to the default body cap", func(t *testing.T) {
 		body := strings.NewReader(strings.Repeat("x", defaultMaxBodyBytes+1))
-		if recorder := do(router, httptest.NewRequest(http.MethodPost, "/echo", body)); recorder.Code != http.StatusRequestEntityTooLarge {
+		recorder := do(router, httptest.NewRequest(http.MethodPost, "/echo", body))
+		if recorder.Code != http.StatusRequestEntityTooLarge {
 			t.Errorf("status = %d, want 413 past the %d byte default", recorder.Code, defaultMaxBodyBytes)
 		}
 	})
