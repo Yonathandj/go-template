@@ -23,19 +23,12 @@ run: ## Run an app (APP=name, default $(APP))
 test: ## Run tests with race detector
 	go test -race ./...
 
-# Generated contracts are excluded: they are machine-written and rewritten by
-# `make oapicodegen`. -coverpkg credits code exercised from another package's tests,
-# which is how the modules are reached through the router.
+# Generated contracts are excluded: `make oapicodegen` overwrites any fix made there.
 COVERPKG = $(shell go list ./... | grep -v oapicodegen | paste -sd,)
 
-# -coverpkg credits code exercised from another package's tests, which is how the
-# modules are reached through the router. The cost is that go test then appends the
-# whole package list to every line, and each per-package percentage becomes "how much
-# of everything this package's tests touched" rather than how covered that package is.
-# Both are noise, so drop them; the merged total below is the number that means something.
-#
-# pipefail is set inline, not via .SHELLFLAGS: make 3.81 (what macOS still ships) ignores
-# that variable, and without pipefail a failing go test piped into sed reports success.
+# -coverpkg credits code reached through another package's tests, at the cost of a noisy
+# per-package percentage on every line; sed drops those, the merged total is what counts.
+# pipefail inline, not .SHELLFLAGS: make 3.81 ignores that variable and would hide a failure.
 COVERTEST = set -o pipefail; go test -coverpkg=$(COVERPKG) -coverprofile=coverage.out ./... | sed 's/coverage:.*//'
 
 cover: ## Run tests and open coverage report

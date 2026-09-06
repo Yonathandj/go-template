@@ -61,6 +61,7 @@ The `example_notes` table comes from `scripts/schema.sql`, which compose mounts 
 2. `make oapicodegen` — generates `internal/api/server/oapicodegen/<name>/`.
 3. Implement `StrictServerInterface` in `internal/api/server/modules/<name>/`, following the four files above.
 4. Register it in `register()` in `internal/api/server/router.go`, wiring `NewRepository` → `NewService` → `NewHandler`.
+5. If it needs a table, add it to `scripts/schema.sql` and replay with `docker compose down -v && docker compose up -d`.
 
 One spec per module: every route in `<name>.yaml` is registered in a single call, so a module is mounted whole or not at all.
 
@@ -124,21 +125,17 @@ Every request passes through `middleware.Default`: request ID, access log, panic
 
 Go 1.26+, Docker for the local dependencies. `make fmt` needs `goimports`; `make lint` needs golangci-lint, which `make lint-install` pins to the version `.golangci.yml` is written for — the config uses the v1 format, which v2 does not read.
 
-Beyond the golangci-lint defaults the config turns on `errorlint` (a `%v` where `%w` was meant silently breaks `errors.Is`), `bodyclose`, `sqlclosecheck`, and `revive`. Generated code under `oapicodegen/` is excluded, since `make oapicodegen` overwrites any fix made there. A `//nolint` must name its linter and give a reason.
+Beyond the golangci-lint defaults the config turns on `errorlint` (a `%v` where `%w` was meant silently breaks `errors.Is`), `bodyclose`, `sqlclosecheck`, `revive`, and `lll` at 120 columns with tabs counted as four. Generated code under `oapicodegen/` is excluded, since `make oapicodegen` overwrites any fix made there. A `//nolint` must name its linter and give a reason.
 
 ## Coverage
 
-`make cover-gaps` prints the current number and everything short of 100%. Only
-`cmd/api` should appear there; if anything else does, it is a genuine gap.
+`make cover-gaps` prints the current number and everything short of 100%. One branch is
+knowingly uncovered: the fallback in `middleware.RequestID` for a failing `crypto/rand`.
+Anything else that appears is a genuine gap.
 
-Four blocks in `cmd/api` are knowingly uncovered, so don't spend an afternoon on them:
-
-- `main` calls `os.Exit`, which no in-process test survives.
-- `NewRouter`'s error branch is unreachable from `run`: config validation enforces
-  `ip|cidr` on `trusted_proxies`, so anything that survives `Load` also satisfies gin.
-  `internal/api/server` covers that branch directly instead.
-- The `Serve` failure, shutdown timeout, and `deps.Close` failure paths in `run` need
-  internals broken from outside the process.
+`cmd/api` reaches its failure paths through the package-level seams in `main.go` — `exit`,
+`listen`, `newRouter`, `closeDeps` — which tests swap to force an error the real process
+cannot be made to produce. `internal/container` uses the same pattern.
 
 `make cover` and `make cover-gaps` exclude generated code under `oapicodegen/` and pass
 `-coverpkg`, so a module reached through the router is credited rather than reported as
