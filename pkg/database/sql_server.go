@@ -9,9 +9,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// Built through url.URL so the credentials get userinfo escaping, not query escaping:
-// QueryEscape turns a space into "+", which a driver reads back as a literal plus.
-// opts is appended raw, since it arrives already encoded from the config file.
 func sqlServerDSN(host string, port int, user string, password string, database string, opts string) string {
 	dsn := url.URL{
 		Scheme:   "sqlserver",

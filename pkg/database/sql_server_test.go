@@ -21,8 +21,6 @@ func TestSQLServerDSN(t *testing.T) {
 	}
 }
 
-// Assert what has to hold, not how url encodes it: a space escaped the query way comes
-// back as "+", and a domain-qualified user is ordinary for SQL Server.
 func TestSQLServerDSNRoundTripsCredentials(t *testing.T) {
 	const user, password, database = `admin@corp.com`, "p@ss w/rd?&:", "my db"
 
